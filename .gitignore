@@ -1,0 +1,8 @@
+﻿# Bytecode & venv
+__pycache__/
+*.pyc
+venv/
+# SQLite DB
+*.db
+# Env files
+.env

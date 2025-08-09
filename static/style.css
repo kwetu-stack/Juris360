@@ -1,0 +1,188 @@
+/* ====== Juris360 Global Styles ====== */
+
+:root {
+  --bg-dark: #0f172a;
+  --bg-card: #0b1220;
+  --text: #e5e7eb;
+  --text-muted: #94a3b8;
+  --brand: #22c55e;
+  --accent: #38bdf8;
+  --border: #1f2937;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, Segoe UI, Roboto, Inter, Arial, sans-serif;
+  background: linear-gradient(180deg, #0b1220, var(--bg-dark));
+  color: var(--text);
+}
+
+/* Links */
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Container */
+.wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* Navbar */
+.nav {
+  position: sticky;
+  top: 0;
+  background: rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+  z-index: 50;
+}
+.nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+.badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+}
+.menu {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.menu a {
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: #cbd5e1;
+}
+.menu a.active,
+.menu a:hover {
+  background: #0b2a1e;
+  color: #d1fae5;
+  border: 1px solid #14532d;
+}
+.hamb {
+  display: none;
+}
+@media (max-width: 640px) {
+  .menu {
+    display: none;
+    flex-direction: column;
+    background: #0b1220;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 56px;
+    padding: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .hamb {
+    display: block;
+  }
+  input#nav-toggle:checked ~ .menu {
+    display: flex;
+  }
+}
+
+/* Buttons */
+.btn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  cursor: pointer;
+}
+.btn.brand {
+  border: 1px solid #14532d;
+  background: #0b2a1e;
+  color: #d1fae5;
+}
+
+/* Forms */
+input, select, textarea {
+  padding: 8px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #111827;
+  border-radius: 12px;
+  overflow: hidden;
+}
+th, td {
+  text-align: left;
+  padding: 10px;
+  font-size: 14px;
+}
+th {
+  background: var(--border);
+  color: #cbd5e1;
+}
+tr:nth-child(even) {
+  background: #1e293b;
+}
+tr:hover {
+  background: #273549;
+}
+
+/* Tags */
+.tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid #1f2a44;
+  color: #a5b4fc;
+}
+
+/* Messages */
+.messages {
+  margin: 10px 0;
+}
+.message {
+  padding: 10px;
+  border: 1px solid #1f2a44;
+  border-radius: 10px;
+}
+.message.success {
+  border-color: #14532d;
+  color: #bbf7d0;
+  background: #0b2a1e;
+}
+.message.error {
+  border-color: #7f1d1d;
+  color: #fecaca;
+  background: #3f1d1d;
+}
+
+/* Footer */
+.footer {
+  text-align: center;
+  margin-top: 24px;
+  color: var(--text-muted);
+  font-size: 13px;
+}

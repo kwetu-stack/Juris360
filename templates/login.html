@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login | Juris360</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    :root { --bg:#0f172a; --muted:#94a3b8; --brand:#22c55e; --accent:#38bdf8; }
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+         font-family:system-ui,Segoe UI,Roboto,Inter,Arial,sans-serif;
+         background:radial-gradient(1200px 600px at 80% -10%, #0c1530 20%, transparent 60%),
+                    linear-gradient(180deg,#0b1220,#0f172a);color:#e5e7eb}
+    a{color:#a5b4fc;text-decoration:none}
+    .card{width:100%;max-width:440px;background:linear-gradient(180deg,#0b1020,#0c1327);
+          border:1px solid #1f2a44;border-radius:18px;padding:18px 18px 16px}
+    .brand{display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:8px}
+    .brand svg{flex:0 0 auto}
+    h1{margin:6px 0 2px;text-align:center;font-size:22px}
+    .muted{text-align:center;color:var(--muted);font-size:13px}
+    form{display:grid;gap:10px;margin-top:14px}
+    label{font-size:13px;color:#cbd5e1}
+    input[type="text"],input[type="password"]{
+      padding:11px 12px;background:#0b1220;border:1px solid #1e293b;border-radius:12px;color:#e5e7eb
+    }
+    .row{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--muted)}
+    .actions{display:flex;gap:10px;align-items:center}
+    .btn{padding:10px 14px;border-radius:12px;border:1px solid #1e293b;background:#0b1220;color:#e5e7eb;cursor:pointer;width:100%}
+    .btn.brand{border:1px solid #14532d;background:#0b2a1e;color:#d1fae5;font-weight:700}
+    .footer{margin-top:14px;text-align:center;color:#94a3b8;font-size:12px}
+    /* messages */
+    .messages{margin-top:10px}
+    .message{padding:10px;border:1px solid #1f2a44;border-radius:10px;font-size:14px}
+    .message.success{border-color:#14532d;color:#bbf7d0;background:#0b2a1e}
+    .message.error{border-color:#7f1d1d;color:#fecaca;background:#3f1d1d}
+  </style>
+</head>
+<body>
+
+<main class="card">
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" stroke="#22c55e" stroke-width="1.5"/>
+      <path d="M7 12h10M12 7v10" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    <div style="font-weight:800;letter-spacing:.3px">Juris360</div>
+  </div>
+  <h1>Welcome back</h1>
+  <div class="muted">Sign in to your account to continue</div>
+
+  <!-- Flash messages -->
+  <div class="messages">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="message {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+  </div>
+
+  <form action="{{ url_for('login') }}" method="POST" autocomplete="on">
+    <div>
+      <label for="username">Email or Username</label>
+      <input id="username" name="username" type="text" placeholder="you@firm.co.ke" required>
+    </div>
+    <div>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" placeholder="••••••••" required>
+    </div>
+
+    <div class="row">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" name="remember"> Remember me
+      </label>
+      <a href="#">Forgot password?</a>
+    </div>
+
+    <div class="actions">
+      <button class="btn brand" type="submit">Sign In</button>
+    </div>
+  </form>
+
+  <div class="footer">Powered by Kwetu Partners Ltd · Juris360 Boilerplate</div>
+</main>
+
+</body>
+</html>

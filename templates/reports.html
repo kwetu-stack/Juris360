@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Reports | Juris360</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    :root { --bg:#0f172a; --muted:#94a3b8; --brand:#22c55e; --accent:#38bdf8; }
+    body{margin:0;font-family:system-ui,Segoe UI,Roboto,Inter,Arial,sans-serif;background:linear-gradient(180deg,#0b1220,#0f172a);color:#e5e7eb}
+    a{text-decoration:none;color:inherit}
+    .wrap{max-width:1100px;margin:0 auto;padding:16px}
+    .nav{position:sticky;top:0;background:rgba(15,23,42,.8);backdrop-filter:blur(8px);border-bottom:1px solid #1f2937;z-index:50}
+    .nav-inner{display:flex;align-items:center;justify-content:space-between;padding:10px 16px}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:700}
+    .badge{font-size:12px;padding:2px 8px;border:1px solid #2dd4bf;border-radius:999px;color:#67e8f9}
+    .menu{display:flex;gap:12px;flex-wrap:wrap}
+    .menu a{padding:8px 10px;border-radius:10px;color:#cbd5e1}
+    .menu a.active,.menu a:hover{background:#0b2a1e;color:#d1fae5;border:1px solid #14532d}
+    .hamb{display:none}
+    @media(max-width:640px){
+      .menu{display:none;flex-direction:column;background:#0b1220;position:absolute;left:0;right:0;top:56px;padding:10px;border-bottom:1px solid #1f2937}
+      .hamb{display:block}
+      input#nav-toggle:checked ~ .menu{display:flex}
+    }
+
+    .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap}
+    .btn{padding:8px 12px;border-radius:10px;border:1px solid #1e293b;background:#0b1220;color:#e5e7eb;cursor:pointer}
+    .btn.brand{border:1px solid #14532d;background:#0b2a1e;color:#d1fae5}
+    .muted{color:var(--muted)}
+
+    /* KPI tiles */
+    .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+    .card{background:linear-gradient(180deg,#0b1020,#0c1327);border:1px solid #1f2a44;border-radius:16px;padding:14px}
+    .num{font-weight:800;font-size:22px}
+
+    /* Filters */
+    .filters{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px}
+    .filters select,.filters input{padding:8px 10px;background:#0b1220;border:1px solid #1e293b;border-radius:10px;color:#e5e7eb}
+
+    /* Sections */
+    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
+    .section .title{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .section .body{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:12px}
+
+    /* Tables */
+    table{width:100%;border-collapse:collapse}
+    th,td{text-align:left;padding:8px 10px;font-size:14px}
+    th{background:#1f2937;color:#cbd5e1}
+    tr:nth-child(even){background:#1e293b}
+
+    /* Tiny bar chart rows */
+    .barrow{display:flex;align-items:center;gap:8px}
+    .bar{height:8px;border-radius:999px;background:#0b2a1e;border:1px solid #14532d;overflow:hidden;flex:1}
+    .bar > span{display:block;height:100%;background:#22c55e;width:40%}
+    .bar.blue{background:#0b1220;border-color:#1e40af}
+    .bar.blue > span{background:#38bdf8}
+    .bar.gray{background:#27272a;border-color:#52525b}
+    .bar.gray > span{background:#a1a1aa}
+
+    .footer{text-align:center;margin-top:24px;color:#94a3b8;font-size:13px}
+
+    @media(max-width:980px){ .kpis{grid-template-columns:repeat(2,1fr)} .grid{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="nav">
+  <div class="nav-inner wrap">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" stroke="#22c55e" stroke-width="1.5"/>
+        <path d="M7 12h10M12 7v10" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <span>Juris360</span>
+      <span class="badge">Reports</span>
+    </div>
+    <label class="hamb">
+      <input id="nav-toggle" type="checkbox" hidden>
+      <span class="btn">☰ Menu</span>
+    </label>
+    <div class="menu">
+      <a href="{{ url_for('dashboard') }}">Dashboard</a>
+      <a href="{{ url_for('view_cases') }}">Cases</a>
+      <a href="{{ url_for('view_clients') }}">Clients</a>
+      <a href="{{ url_for('schedule') }}">Schedule</a>
+      <a href="{{ url_for('billing') }}">Billing</a>
+      <a href="{{ url_for('documents') }}">Documents</a>
+      <a href="{{ url_for('reports') }}" class="active">Reports</a>
+      <a href="{{ url_for('settings') }}">Settings</a>
+      <a href="{{ url_for('login') }}">Logout</a>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap" style="padding-top:18px">
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <h1 style="margin:0">Reports & Analytics</h1>
+      <div class="muted">Overview of caseload, revenue, and activity.</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a class="btn" href="#">Export CSV</a>
+      <a class="btn" href="#">Export PDF</a>
+    </div>
+  </div>
+
+  <!-- KPI tiles -->
+  <section class="kpis">
+    <div class="card">
+      <div class="muted">Open Cases</div>
+      <div class="num">42</div>
+    </div>
+    <div class="card">
+      <div class="muted">Closed (30 days)</div>
+      <div class="num">11</div>
+    </div>
+    <div class="card">
+      <div class="muted">Revenue (30 days)</div>
+      <div class="num">KES 1,240,000</div>
+    </div>
+    <div class="card">
+      <div class="muted">Outstanding Invoices</div>
+      <div class="num">KES 384,000</div>
+    </div>
+  </section>
+
+  <!-- Filters -->
+  <div class="filters">
+    <select>
+      <option value="">All Case Types</option>
+      <option>Civil</option>
+      <option>Criminal</option>
+      <option>Commercial</option>
+      <option>Family</option>
+      <option>Employment</option>
+    </select>
+    <select>
+      <option value="">All Lawyers</option>
+      <option>Eric Kimondiu</option>
+      <option>Staff A</option>
+      <option>Staff B</option>
+    </select>
+    <input type="month" />
+    <input type="text" placeholder="Search client, case ID…"/>
+    <a class="btn brand" href="#">Apply</a>
+  </div>
+
+  <!-- Sections grid -->
+  <section class="grid">
+    <!-- Case status breakdown -->
+    <div class="section" style="grid-column: span 6">
+      <div class="title">
+        <h3 style="margin:0">Case Status Breakdown</h3>
+        <a class="btn" href="#">Download</a>
+      </div>
+      <div class="body">
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Count</th>
+              <th>Share</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <div class="barrow">
+                  <span>Open</span>
+                </div>
+              </td>
+              <td>28</td>
+              <td>
+                <div class="bar"><span style="width:66%"></span></div>
+              </td>
+            </tr>
+            <tr>
+              <td><div class="barrow"><span>Pending</span></div></td>
+              <td>9</td>
+              <td><div class="bar blue"><span style="width:21%"></span></div></td>
+            </tr>
+            <tr>
+              <td><div class="barrow"><span>Closed</span></div></td>
+              <td>5</td>
+              <td><div class="bar gray"><span style="width:13%"></span></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Billing summary -->
+    <div class="section" style="grid-column: span 6">
+      <div class="title">
+        <h3 style="margin:0">Billing Summary (This Month)</h3>
+        <a class="btn" href="#">Download</a>
+      </div>
+      <div class="body">
+        <table>
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>Invoices</th>
+              <th>Paid</th>
+              <th>Outstanding</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Wanjiru Estates Ltd</td>
+              <td>4</td>
+              <td>KES 310,000</td>
+              <td>KES 120,000</td>
+            </tr>
+            <tr>
+              <td>John Ngugi</td>
+              <td>2</td>
+              <td>KES 30,000</td>
+              <td>KES 15,000</td>
+            </tr>
+            <tr>
+              <td>Amina Hassan</td>
+              <td>3</td>
+              <td>KES 180,000</td>
+              <td>KES 30,000</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Upcoming hearings -->
+    <div class="section" style="grid-column: span 12">
+      <div class="title">
+        <h3 style="margin:0">Hearings & Deadlines (Next 14 Days)</h3>
+        <a class="btn" href="{{ url_for('schedule') }}">Open Schedule</a>
+      </div>
+      <div class="body">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Case</th>
+              <th>Client</th>
+              <th>Type</th>
+              <th>Owner</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>2025-08-11</td>
+              <td>CR 1029/24</td>
+              <td>Republic</td>
+              <td>Hearing</td>
+              <td>Eric Kimondiu</td>
+              <td>Scheduled</td>
+            </tr>
+            <tr>
+              <td>2025-08-12</td>
+              <td>CIV 88/25</td>
+              <td>John Ngugi</td>
+              <td>Filing</td>
+              <td>Staff A</td>
+              <td>Drafting</td>
+            </tr>
+            <tr>
+              <td>2025-08-14</td>
+              <td>CIV 55/23</td>
+              <td>Wanjiru Estates</td>
+              <td>Hearing</td>
+              <td>Staff B</td>
+              <td>Confirmed</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </section>
+
+  <div class="footer">Powered by Kwetu Partners Ltd · Juris360 Boilerplate</div>
+</main>
+
+</body>
+</html>

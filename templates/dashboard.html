@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard | Juris360</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    :root { --bg:#0f172a; --panel:#111827; --muted:#94a3b8; --brand:#22c55e; --accent:#38bdf8; }
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;background:linear-gradient(180deg,#0b1220,#0f172a);color:#e5e7eb}
+    a{color:inherit;text-decoration:none}
+    .wrap{max-width:1100px;margin:0 auto;padding:16px}
+    .nav{position:sticky;top:0;z-index:50;background:rgba(15,23,42,.8);backdrop-filter:blur(8px);border-bottom:1px solid #1f2937}
+    .nav-inner{display:flex;align-items:center;justify-content:space-between;padding:10px 16px}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.3px}
+    .badge{font-size:12px;padding:2px 8px;border:1px solid #2dd4bf;border-radius:999px;color:#67e8f9}
+    .menu{display:flex;gap:12px;flex-wrap:wrap}
+    .menu a{padding:8px 10px;border-radius:10px;color:#cbd5e1}
+    .menu a.active,.menu a:hover{background:#0b2a1e;color:#d1fae5;border:1px solid #14532d}
+    .hamb{display:none}
+    .grid{display:grid;gap:16px}
+    .kpis{grid-template-columns:repeat(4,1fr)}
+    .cards{grid-template-columns:repeat(12,1fr)}
+    .card{background:linear-gradient(180deg,#0b1020,#0c1327);border:1px solid #1f2a44;border-radius:16px;padding:16px}
+    .kpi .num{font-size:28px;font-weight:800}
+    .kpi .lbl{color:var(--muted);font-size:13px}
+    .chip{font-size:12px;border:1px solid #233253;border-radius:999px;padding:2px 8px;color:#93c5fd}
+    .section-title{display:flex;align-items:center;justify-content:space-between;margin:6px 0 10px}
+    .btn{padding:8px 12px;border-radius:10px;border:1px solid #1e293b;background:#0b1220;color:#e5e7eb;cursor:pointer}
+    .btn:hover{border-color:#334155}
+    .btn.brand{border:1px solid #14532d;background:#0b2a1e;color:#d1fae5}
+    .list{margin:0;padding:0;list-style:none}
+    .list li{display:flex;justify-content:space-between;gap:10px;padding:10px;border-bottom:1px dashed #1f2a44}
+    .pill{padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid #1f2a44;color:#a5b4fc}
+    .footer{margin:32px 0 12px;color:#94a3b8;font-size:13px;text-align:center}
+    .hero{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;border:1px dashed #1f2a44;border-radius:16px;background:linear-gradient(180deg,#0b1220,#0c1426)}
+    .hero h1{margin:0;font-size:20px}
+    .muted{color:#94a3b8}
+    @media (max-width: 980px){ .kpis{grid-template-columns:repeat(2,1fr)} .cards{grid-template-columns:repeat(6,1fr)} }
+    @media (max-width: 640px){
+      .menu{display:none;flex-direction:column;background:#0b1220;position:absolute;left:0;right:0;top:56px;border-bottom:1px solid #1f2937;padding:10px}
+      .hamb{display:block}
+      input#nav-toggle:checked ~ .menu{display:flex}
+      .kpis{grid-template-columns:1fr} .cards{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <!-- Top Nav -->
+  <nav class="nav">
+    <div class="nav-inner wrap">
+      <div class="brand">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" stroke="#22c55e" stroke-width="1.5"/>
+          <path d="M7 12h10M12 7v10" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span>Juris360</span>
+        <span class="badge">Legal Practice Management</span>
+      </div>
+
+      <label class="hamb">
+        <input id="nav-toggle" type="checkbox" hidden>
+        <span class="btn">☰ Menu</span>
+      </label>
+
+      <div class="menu">
+        <a href="{{ url_for('dashboard') }}" class="active">Dashboard</a>
+        <a href="{{ url_for('view_cases') }}">Cases</a>
+        <a href="{{ url_for('view_clients') }}">Clients</a>
+        <a href="{{ url_for('schedule') }}">Schedule</a>
+        <a href="{{ url_for('billing') }}">Billing</a>
+        <a href="{{ url_for('documents') }}">Documents</a>
+        <a href="{{ url_for('reports') }}">Reports</a>
+        <a href="{{ url_for('settings') }}">Settings</a>
+        <a href="{{ url_for('login') }}">Logout</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="wrap" style="padding-top:18px">
+    <!-- Welcome / Quick actions -->
+    <section class="hero">
+      <div>
+        <h1>Welcome back, <span class="muted">Counsel</span></h1>
+        <div class="muted">Here’s your firm overview at a glance.</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn brand" href="{{ url_for('add_case') }}">+ New Case</a>
+        <a class="btn" href="{{ url_for('add_client') }}">+ New Client</a>
+      </div>
+    </section>
+
+    <!-- KPI widgets -->
+    <section class="grid kpis" style="margin-top:16px">
+      <div class="card kpi">
+        <div class="lbl">Open Cases</div>
+        <div class="num">42</div>
+        <div class="chip">+3 this week</div>
+      </div>
+      <div class="card kpi">
+        <div class="lbl">Hearings (7 days)</div>
+        <div class="num">5</div>
+        <div class="chip">2 today</div>
+      </div>
+      <div class="card kpi">
+        <div class="lbl">Outstanding Invoices</div>
+        <div class="num">KES 384,000</div>
+        <div class="chip">8 unpaid</div>
+      </div>
+      <div class="card kpi">
+        <div class="lbl">Tasks Due Today</div>
+        <div class="num">6</div>
+        <div class="chip">Don’t miss!</div>
+      </div>
+    </section>
+
+    <!-- Two columns: Upcoming / Tasks -->
+    <section class="grid cards" style="margin-top:8px">
+      <div class="card" style="grid-column: span 7">
+        <div class="section-title">
+          <h3 style="margin:0">Upcoming Hearings & Meetings</h3>
+          <a class="btn" href="{{ url_for('schedule') }}">Open Calendar</a>
+        </div>
+        <ul class="list">
+          <li><span>14:00 — **CR 1029/24** People v. Karanja (Milimani)</span><span class="pill">Today</span></li>
+          <li><span>10:00 — **CIV 55/23** Ngugi v. Amani (High Court)</span><span class="pill">Tomorrow</span></li>
+          <li><span>16:00 — Client consult: Wanjiru Estates</span><span class="pill">Wed</span></li>
+        </ul>
+      </div>
+
+      <div class="card" style="grid-column: span 5">
+        <div class="section-title">
+          <h3 style="margin:0">Tasks</h3>
+          <a class="btn" href="{{ url_for('view_cases') }}">View All</a>
+        </div>
+        <ul class="list">
+          <li><span>Draft defence for **CIV 88/25**</span><span class="pill">Due today</span></li>
+          <li><span>File bundle for **AP 19/25**</span><span class="pill">Tomorrow</span></li>
+          <li><span>Prepare invoice for **Wanjiru Estates**</span><span class="pill">This week</span></li>
+        </ul>
+      </div>
+
+      <div class="card" style="grid-column: span 12">
+        <div class="section-title">
+          <h3 style="margin:0">Recent Activity</h3>
+          <a class="btn" href="{{ url_for('reports') }}">Open Reports</a>
+        </div>
+        <ul class="list">
+          <li><span>Uploaded affidavit to **CIV 55/23**</span><span class="pill">2h ago</span></li>
+          <li><span>Added client **Oketch & Co.**</span><span class="pill">Yesterday</span></li>
+          <li><span>Generated invoice **INV-0241**</span><span class="pill">2d ago</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="footer">Powered by Kwetu Partners Ltd · Juris360 Boilerplate</div>
+  </main>
+</body>
+</html>
