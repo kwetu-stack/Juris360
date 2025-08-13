@@ -1,97 +1,149 @@
+import os
+import sqlite3
 from flask import Flask, render_template, request, redirect, url_for, flash, session
-import sqlite3, os
+
+# =========================
+# Config (env-driven)
+# =========================
+DATA_DIR = os.environ.get("DATA_DIR", ".")              # e.g. /var/data on Render disk
+os.makedirs(DATA_DIR, exist_ok=True)
+
+DB_NAME = os.path.join(DATA_DIR, "juris360.db")
+
+SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
+ADMIN_PASS = os.environ.get("ADMIN_PASS", "kwetutech001")
 
 app = Flask(__name__)
-app.secret_key = "juris360_secret"
+app.secret_key = SECRET_KEY
 
-DB_NAME = "juris360.db"
 
-# ===== Database Init =====
+# =========================
+# DB setup / helpers
+# =========================
 def init_db():
+    """Create tables if they don't exist."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
-        # Users table
-        cur.execute("""CREATE TABLE IF NOT EXISTS users(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            password TEXT
-        )""")
-        # Cases (simple schema)
-        cur.execute("""CREATE TABLE IF NOT EXISTS cases(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT,
-            client TEXT,
-            status TEXT
-        )""")
-        # Clients (simple schema)
-        cur.execute("""CREATE TABLE IF NOT EXISTS clients(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            contact TEXT,
-            email TEXT
-        )""")
-        # Schedule (demo)
-        cur.execute("""CREATE TABLE IF NOT EXISTS schedule(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT,
-            description TEXT,
-            type TEXT
-        )""")
-        # Billing (demo)
-        cur.execute("""CREATE TABLE IF NOT EXISTS billing(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client TEXT,
-            amount REAL,
-            status TEXT
-        )""")
-        # Documents (demo)
-        cur.execute("""CREATE TABLE IF NOT EXISTS documents(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT,
-            filename TEXT
-        )""")
-        conn.commit()
-    seed_admin()
 
-# ===== Seed default admin =====
+        # Users (plaintext for boilerplate simplicity — switch to hashing later)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE,
+                password TEXT
+            )
+        """)
+
+        # Cases (minimal schema compatible with templates)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS cases(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT,          -- we store case_id/title in this field
+                client TEXT,
+                status TEXT
+            )
+        """)
+
+        # Clients (minimal schema compatible with templates)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS clients(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                contact TEXT,
+                email TEXT
+            )
+        """)
+
+        # Schedule (demo)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS schedule(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT,
+                description TEXT,
+                type TEXT
+            )
+        """)
+
+        # Billing (demo)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS billing(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client TEXT,
+                amount REAL,
+                status TEXT
+            )
+        """)
+
+        # Documents (demo stubs)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS documents(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT,
+                filename TEXT
+            )
+        """)
+
+        conn.commit()
+
+
 def seed_admin():
+    """Ensure the admin user exists and has the desired password."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
-        cur.execute("SELECT 1 FROM users WHERE username=?", ("admin",))
-        if not cur.fetchone():
-            cur.execute("INSERT INTO users (username, password) VALUES (?,?)", ("admin", "admin"))
+        cur.execute("SELECT password FROM users WHERE username=?", (ADMIN_USER,))
+        row = cur.fetchone()
+        if not row:
+            cur.execute("INSERT INTO users (username, password) VALUES (?,?)",
+                        (ADMIN_USER, ADMIN_PASS))
+            conn.commit()
+        elif row[0] != ADMIN_PASS:
+            cur.execute("UPDATE users SET password=? WHERE username=?",
+                        (ADMIN_PASS, ADMIN_USER))
             conn.commit()
 
-# ===== Helpers =====
+
 def is_logged_in():
     return "username" in session
+
 
 def require_login():
     if not is_logged_in():
         return redirect(url_for("login"))
     return None
 
-# ===== Home / Auth =====
+
+# Ensure DB exists & admin is seeded when module is imported (important for Gunicorn/Render)
+if not os.path.exists(DB_NAME):
+    init_db()
+seed_admin()
+
+
+# =========================
+# Routes
+# =========================
 @app.route("/")
 def home():
-    if is_logged_in():
-        return redirect(url_for("dashboard"))
-    return redirect(url_for("login"))
+    return redirect(url_for("dashboard") if is_logged_in() else url_for("login"))
 
+
+# ---- Auth ----
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form["username"].strip()
-        password = request.form["password"].strip()
+        username = (request.form.get("username") or "").strip()
+        password = (request.form.get("password") or "").strip()
         with sqlite3.connect(DB_NAME) as conn:
             cur = conn.cursor()
             cur.execute("SELECT 1 FROM users WHERE username=? AND password=?", (username, password))
-            if cur.fetchone():
-                session["username"] = username
-                flash("Login successful!", "success")
-                return redirect(url_for("dashboard"))
+            ok = cur.fetchone()
+        if ok:
+            session["username"] = username
+            flash("Login successful!", "success")
+            return redirect(url_for("dashboard"))
         flash("Invalid credentials", "error")
     return render_template("login.html")
+
 
 @app.route("/logout")
 def logout():
@@ -99,12 +151,14 @@ def logout():
     flash("You have been logged out.", "success")
     return redirect(url_for("login"))
 
-# ===== Pages =====
+
+# ---- Pages ----
 @app.route("/dashboard")
 def dashboard():
     redir = require_login()
     if redir: return redir
     return render_template("dashboard.html")
+
 
 @app.route("/view-cases")
 def view_cases():
@@ -116,6 +170,7 @@ def view_cases():
         cases = cur.fetchall()
     return render_template("view-cases.html", cases=cases)
 
+
 @app.route("/view-clients")
 def view_clients():
     redir = require_login()
@@ -125,6 +180,7 @@ def view_clients():
         cur.execute("SELECT id, name, contact, email FROM clients ORDER BY id DESC")
         clients = cur.fetchall()
     return render_template("view-clients.html", clients=clients)
+
 
 @app.route("/schedule")
 def schedule():
@@ -136,18 +192,18 @@ def schedule():
         events = cur.fetchall()
     return render_template("schedule.html", events=events)
 
+
 @app.route("/billing", methods=["GET", "POST"])
 def billing():
     redir = require_login()
     if redir: return redir
 
-    # Allow POST from the modal in billing.html (store a minimal record)
+    # Minimal POST handler for the modal in billing.html
     if request.method == "POST":
-        client_name = request.form.get("client_name", "").strip()
-        amount = request.form.get("amount", "").strip()
-        status = request.form.get("status", "Unpaid").strip() or "Unpaid"
+        client_name = (request.form.get("client_name") or "").strip()
+        status = (request.form.get("status") or "Unpaid").strip() or "Unpaid"
         try:
-            amount_val = float(amount or 0)
+            amount_val = float(request.form.get("amount") or 0)
         except ValueError:
             amount_val = 0.0
         with sqlite3.connect(DB_NAME) as conn:
@@ -164,6 +220,7 @@ def billing():
         bills = cur.fetchall()
     return render_template("billing.html", bills=bills)
 
+
 @app.route("/documents")
 def documents():
     redir = require_login()
@@ -174,11 +231,13 @@ def documents():
         docs = cur.fetchall()
     return render_template("documents.html", docs=docs)
 
+
 @app.route("/reports")
 def reports():
     redir = require_login()
     if redir: return redir
     return render_template("reports.html")
+
 
 @app.route("/settings")
 def settings():
@@ -186,14 +245,15 @@ def settings():
     if redir: return redir
     return render_template("settings.html")
 
-# ===== NEW: Add Case (matches add-case.html) =====
+
+# ---- Add Case (matches add-case.html) ----
 @app.route("/add-case", methods=["GET", "POST"])
 def add_case():
     redir = require_login()
     if redir: return redir
 
     if request.method == "POST":
-        # Map the rich form to the simple table:
+        # Map rich form fields to simple schema
         title = (request.form.get("title") or request.form.get("case_id") or "").strip()
         client_name = (request.form.get("client_name") or "").strip()
         status = (request.form.get("status") or "Open").strip() or "Open"
@@ -213,14 +273,14 @@ def add_case():
 
     return render_template("add-case.html")
 
-# ===== NEW: Add Client (matches add-client.html) =====
+
+# ---- Add Client (matches add-client.html) ----
 @app.route("/add-client", methods=["GET", "POST"])
 def add_client():
     redir = require_login()
     if redir: return redir
 
     if request.method == "POST":
-        # Map the rich form to the simple table:
         client_name = (request.form.get("client_name") or "").strip()
         phone = (request.form.get("phone") or "").strip()
         email = (request.form.get("email") or "").strip()
@@ -232,7 +292,7 @@ def add_client():
         with sqlite3.connect(DB_NAME) as conn:
             cur = conn.cursor()
             cur.execute("INSERT INTO clients (name, contact, email) VALUES (?,?,?)",
-                (client_name, phone, email))
+                        (client_name, phone, email))
             conn.commit()
 
         flash("Client added successfully!", "success")
@@ -240,7 +300,8 @@ def add_client():
 
     return render_template("add-client.html")
 
-# ===== Stubs so template links don’t 404 (you can wire later) =====
+
+# ---- Stubs so template links don't 404 (wire up later if needed) ----
 @app.route("/documents/upload", methods=["POST"])
 def upload_document():
     redir = require_login()
@@ -283,11 +344,11 @@ def change_password():
     flash("Password change not implemented in minimal app.py yet.", "error")
     return redirect(url_for("settings"))
 
-# ===== Run App =====
+
+# =========================
+# Local dev entrypoint
+# (Render will use: gunicorn app:app --bind 0.0.0.0:$PORT)
+# =========================
 if __name__ == "__main__":
-    if not os.path.exists(DB_NAME):
-        init_db()
-    else:
-        # Ensure admin exists even if DB pre-existed
-        seed_admin()
+    # local run
     app.run(debug=True)
