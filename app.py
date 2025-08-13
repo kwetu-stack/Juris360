@@ -1,11 +1,11 @@
 import os
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory
 
 # =========================
 # Config (env-driven)
 # =========================
-DATA_DIR = os.environ.get("DATA_DIR", ".")              # e.g. /var/data on Render disk
+DATA_DIR = os.environ.get("DATA_DIR", ".")  # e.g. /var/data on Render disk
 os.makedirs(DATA_DIR, exist_ok=True)
 
 DB_NAME = os.path.join(DATA_DIR, "juris360.db")
@@ -88,19 +88,16 @@ def init_db():
 
 
 def seed_admin():
-    """Ensure the admin user exists and has the desired password."""
+    """Ensure the admin user exists and has the desired password (UPSERT)."""
     with sqlite3.connect(DB_NAME) as conn:
         cur = conn.cursor()
-        cur.execute("SELECT password FROM users WHERE username=?", (ADMIN_USER,))
-        row = cur.fetchone()
-        if not row:
-            cur.execute("INSERT INTO users (username, password) VALUES (?,?)",
-                        (ADMIN_USER, ADMIN_PASS))
-            conn.commit()
-        elif row[0] != ADMIN_PASS:
-            cur.execute("UPDATE users SET password=? WHERE username=?",
-                        (ADMIN_PASS, ADMIN_USER))
-            conn.commit()
+        # Works on SQLite 3.24+ (Render images support this)
+        cur.execute("""
+            INSERT INTO users (username, password)
+            VALUES (?, ?)
+            ON CONFLICT(username) DO UPDATE SET password=excluded.password
+        """, (ADMIN_USER, ADMIN_PASS))
+        conn.commit()
 
 
 def is_logged_in():
@@ -127,11 +124,23 @@ def home():
     return redirect(url_for("dashboard") if is_logged_in() else url_for("login"))
 
 
+# Optional: quiet the favicon 404s
+@app.route("/favicon.ico")
+def favicon():
+    # Place a favicon.ico in /static if you want a real icon
+    static_path = os.path.join("static", "favicon.ico")
+    if os.path.exists(static_path):
+        return send_from_directory("static", "favicon.ico")
+    # Return a tiny empty response if no favicon available
+    return ("", 204)
+
+
 # ---- Auth ----
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = (request.form.get("username") or "").strip()
+        # Accept both "username" and "email" field names from the form
+        username = (request.form.get("username") or request.form.get("email") or "").strip()
         password = (request.form.get("password") or "").strip()
         with sqlite3.connect(DB_NAME) as conn:
             cur = conn.cursor()
@@ -347,8 +356,7 @@ def change_password():
 
 # =========================
 # Local dev entrypoint
-# (Render will use: gunicorn app:app --bind 0.0.0.0:$PORT)
+# (Render uses: gunicorn app:app --bind 0.0.0.0:$PORT)
 # =========================
 if __name__ == "__main__":
-    # local run
     app.run(debug=True)
