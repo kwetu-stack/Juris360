@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: Juris360
+    env: docker
+    plan: starter
+    dockerContext: .
+    autoDeploy: true
+    envVars:
+      - key: SECRET_KEY
+        value: mysecret123
+      - key: ADMIN_USER
+        value: admin
+      - key: ADMIN_PASS
+        value: kwetutech00
+      - key: DATA_DIR
+        value: /data
