@@ -1,19 +1,29 @@
 import os
 import sqlite3
+import mimetypes
+from datetime import datetime
 from pathlib import Path
 from flask import (
-    Flask, render_template, request, redirect, url_for, flash, session
+    Flask, render_template, request, redirect, url_for, flash, session,
+    send_from_directory, abort, Response
 )
+from werkzeug.utils import secure_filename
 
 # =========================
 # Config (env-driven)
 # =========================
-DATA_DIR = os.environ.get("DATA_DIR", ".")            # e.g., /data in Docker
+DATA_DIR = os.environ.get("DATA_DIR", ".")  # e.g., /data in Docker
 DB_NAME = os.path.join(DATA_DIR, "juris360.db")
-
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
 ADMIN_PASS = os.environ.get("ADMIN_PASS", "kwetutech00")
+
+# uploads
+UPLOADS_DIR = os.path.join(DATA_DIR, "uploads")
+Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
+Path(UPLOADS_DIR).mkdir(parents=True, exist_ok=True)
+
+ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg"}
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -26,9 +36,18 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
+def _ensure_columns(conn, table, needed_cols_sql):
+    """Add columns to an existing table if they don't exist (SQLite)."""
+    have = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    for col_sql in needed_cols_sql:
+        col_name = col_sql.split()[0]
+        if col_name not in have:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_sql}")
+
 def init_db():
     """Create tables if they don't exist (safe to call repeatedly)."""
     Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
+    Path(UPLOADS_DIR).mkdir(parents=True, exist_ok=True)
 
     with get_db() as conn:
         cur = conn.cursor()
@@ -80,6 +99,7 @@ def init_db():
         )
         """)
 
+        # base documents table (your original)
         cur.execute("""
         CREATE TABLE IF NOT EXISTS documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,6 +107,15 @@ def init_db():
             filename TEXT
         )
         """)
+
+        # add only the extra columns your current documents.html uses
+        _ensure_columns(conn, "documents", [
+            "case_id TEXT",
+            "doc_type TEXT",
+            "notes TEXT",
+            "uploaded_at TEXT",
+            "size_bytes INTEGER"
+        ])
 
         conn.commit()
 
@@ -109,18 +138,32 @@ def seed_admin():
         conn.commit()
 
 # Ensure DB exists when the module loads (works locally and on Render).
-# (Your Docker CMD also runs prestart.py first, which calls init/seed again safely.)
 if not os.path.exists(DB_NAME):
     init_db()
+else:
+    Path(UPLOADS_DIR).mkdir(parents=True, exist_ok=True)
 seed_admin()
 
 # =========================
-# Auth helpers
+# Small helpers
 # =========================
 def require_login():
     if "user" not in session:
         return redirect(url_for("login"))
     return None
+
+def allowed_file(filename: str) -> bool:
+    return os.path.splitext(filename)[1].lower() in ALLOWED_EXTENSIONS
+
+def human_size(n: int) -> str:
+    try:
+        n = int(n or 0)
+    except Exception:
+        n = 0
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if n < 1024 or unit == "TB":
+            return f"{n} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024.0
 
 # =========================
 # Routes
@@ -293,13 +336,127 @@ def billing():
         bills = conn.execute("SELECT client, amount, status FROM billing ORDER BY id DESC").fetchall()
     return render_template("billing.html", bills=bills)
 
+# -------- Documents: list / upload / preview / download / delete --------
 @app.route("/documents")
 def documents():
     redir = require_login()
     if redir: return redir
+    # fetch all, but your current documents.html uses `documents` (not `docs`)
     with get_db() as conn:
-        docs = conn.execute("SELECT id, title, filename FROM documents ORDER BY id DESC").fetchall()
-    return render_template("documents.html", docs=docs)
+        rows = conn.execute("""
+            SELECT id, title, filename, case_id, doc_type, notes, uploaded_at, size_bytes
+            FROM documents
+            ORDER BY id DESC
+        """).fetchall()
+
+    documents = []
+    for r in rows:
+        documents.append({
+            "id": r["id"],
+            "filename": r["filename"],
+            "case_id": r["case_id"],
+            "doc_type": r["doc_type"],
+            "notes": r["notes"],
+            "uploaded_at": r["uploaded_at"] or "",
+            "size_human": human_size(r["size_bytes"])
+        })
+    return render_template("documents.html", documents=documents, docs=rows)
+
+@app.route("/documents/upload", methods=["POST"])
+def upload_document():
+    redir = require_login()
+    if redir: return redir
+
+    file = request.files.get("file")
+    case_id = (request.form.get("case_id") or "").strip()
+    doc_type = (request.form.get("doc_type") or "").strip()
+    notes = (request.form.get("notes") or "").strip()
+
+    if not file or not file.filename.strip():
+        flash("Please choose a file to upload.", "error")
+        return redirect(url_for("documents"))
+
+    filename = secure_filename(file.filename)
+    if not allowed_file(filename):
+        flash("File type not allowed.", "error")
+        return redirect(url_for("documents"))
+
+    dest = os.path.join(UPLOADS_DIR, filename)
+    base, ext = os.path.splitext(filename)
+    i = 1
+    while os.path.exists(dest):  # avoid overwriting
+        filename = f"{base}_{i}{ext}"
+        dest = os.path.join(UPLOADS_DIR, filename)
+        i += 1
+
+    file.save(dest)
+    size_bytes = os.path.getsize(dest)
+    uploaded_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO documents (title, filename, case_id, doc_type, notes, uploaded_at, size_bytes)
+            VALUES (?,?,?,?,?,?,?)
+        """, (filename, filename, case_id, doc_type, notes, uploaded_at, size_bytes))
+        conn.commit()
+
+    flash("Document uploaded successfully.", "success")
+    return redirect(url_for("documents"))
+
+@app.route("/documents/<int:doc_id>/download")
+def download_document(doc_id):
+    redir = require_login()
+    if redir: return redir
+    with get_db() as conn:
+        row = conn.execute("SELECT filename FROM documents WHERE id=?", (doc_id,)).fetchone()
+    if not row:
+        abort(404)
+    return send_from_directory(UPLOADS_DIR, row["filename"], as_attachment=True)
+
+@app.route("/documents/<int:doc_id>/preview")
+def preview_document(doc_id):
+    redir = require_login()
+    if redir: return redir
+    with get_db() as conn:
+        row = conn.execute("SELECT filename FROM documents WHERE id=?", (doc_id,)).fetchone()
+    if not row:
+        abort(404)
+
+    filename = row["filename"]
+    path = os.path.join(UPLOADS_DIR, filename)
+    if not os.path.exists(path):
+        abort(404)
+
+    mime, _ = mimetypes.guess_type(filename)
+    mime = mime or "application/octet-stream"
+    with open(path, "rb") as f:
+        data = f.read()
+    return Response(
+        data,
+        mimetype=mime,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'}
+    )
+
+@app.route("/documents/<int:doc_id>/delete", methods=["POST"])
+def delete_document(doc_id):
+    redir = require_login()
+    if redir: return redir
+    with get_db() as conn:
+        row = conn.execute("SELECT filename FROM documents WHERE id=?", (doc_id,)).fetchone()
+        if not row:
+            flash("Document not found.", "error")
+            return redirect(url_for("documents"))
+        filename = row["filename"]
+        conn.execute("DELETE FROM documents WHERE id=?", (doc_id,))
+        conn.commit()
+
+    try:
+        os.remove(os.path.join(UPLOADS_DIR, filename))
+    except FileNotFoundError:
+        pass
+
+    flash("Document deleted.", "success")
+    return redirect(url_for("documents"))
 
 @app.route("/reports")
 def reports():
@@ -317,7 +474,6 @@ def settings():
 # Dev entrypoint (ignored by Gunicorn)
 # =========================
 if __name__ == "__main__":
-    # helpful when running locally: ensure DB and admin exist
     init_db()
     seed_admin()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
