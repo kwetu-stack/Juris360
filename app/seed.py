@@ -51,3 +51,19 @@ def run_seed():
 
     db.session.commit()
     print("✅ Demo data seeded.")
+# --- Force reset for demo sites (safe for Render) ---
+def run_seed_force():
+    """
+    Clear demo data (in FK-safe order) and re-insert.
+    Does NOT touch the users table, so your admin login stays.
+    """
+    # Delete children first, then parents
+    Invoice.query.delete()
+    Document.query.delete()
+    Case.query.delete()
+    Event.query.delete()
+    Client.query.delete()
+    db.session.commit()
+
+    # Re-seed fresh demo data
+    run_seed()
