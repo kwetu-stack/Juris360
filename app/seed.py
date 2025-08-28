@@ -2,76 +2,52 @@
 from datetime import date
 from app.models import db, Client, Case, Invoice, Event, Document
 
-def _get_or_create_client(name, contact, email):
-    c = Client.query.filter_by(name=name).first()
-    if not c:
-        c = Client(name=name, contact=contact, email=email)
-        db.session.add(c)
-        db.session.commit()
-    return c
-
-def _get_or_create_case(title, description, status, client_id):
-    c = Case.query.filter_by(title=title).first()
-    if not c:
-        c = Case(title=title, description=description, status=status, client_id=client_id)
-        db.session.add(c)
-        db.session.commit()
-    return c
-
-def _ensure_invoice(client_id, amount, status, notes):
-    exists = Invoice.query.filter_by(client_id=client_id, amount=amount, status=status, notes=notes).first()
-    if not exists:
-        db.session.add(Invoice(client_id=client_id, amount=amount, status=status, notes=notes))
-
-def _ensure_event(d, description, type_):
-    exists = Event.query.filter_by(date=d, description=description, type=type_).first()
-    if not exists:
-        db.session.add(Event(date=d, description=description, type=type_))
-
-def _ensure_document(title, filename, case_id=None, notes=None):
-    exists = Document.query.filter_by(title=title, filename=filename).first()
-    if not exists:
-        db.session.add(Document(title=title, filename=filename, case_id=case_id, notes=notes))
-
-def run_seed_force():
-    """
-    Idempotent seed: creates missing demo rows; safe to run many times.
-    Use this on Render to recover from a partial seed.
-    """
-    try:
-        # --- Clients ---
-        john = _get_or_create_client("John Mwangi", "+254712345678", "john@example.com")
-        mary = _get_or_create_client("Mary Atieno", "+254733112233", "mary@example.com")
-        acme = _get_or_create_client("Acme Supplies Ltd", "+254701998877", "info@acme.co.ke")
-
-        # --- Cases ---
-        civ55 = _get_or_create_case("CIV 55/2025", "Breach of contract", "Open", john.id)
-        hcc102 = _get_or_create_case("HCC 102/2025", "Land dispute", "Pending", mary.id)
-
-        # --- Invoices (use client_id, not a string) ---
-        _ensure_invoice(john.id, 50000, "Unpaid", "Legal fees advance")
-        _ensure_invoice(mary.id, 20000, "Paid", "Filing fee")
-
-        # --- Events (use real dates) ---
-        _ensure_event(date(2025, 9, 1), "Court Mention - Case CIV 55/2025", "Court")
-        _ensure_event(date(2025, 9, 10), "Client meeting - Mary Atieno", "Meeting")
-
-        # --- Documents (case links optional) ---
-        _ensure_document("Pleading Example", "pleading.pdf", case_id=civ55.id, notes="Sample pleading")
-        _ensure_document("Invoice Sample", "invoice.pdf", case_id=None, notes="Sample PDF")
-
-        db.session.commit()
-        print("✅ Demo data present (created missing rows).")
-    except Exception as e:
-        db.session.rollback()
-        print(f"❌ Seed error: {e}")
-
 def run_seed():
-    """
-    Original behavior: do nothing if any clients already exist.
-    Kept for completeness; we’ll use run_seed_force() instead.
-    """
+    """Insert demo data if DB is empty. Safe to run multiple times."""
     if Client.query.count() > 0:
-        print("Seed skipped: Clients already exist.")
+        print("Seed skipped: clients already exist.")
         return
-    run_seed_force()
+
+    # --- Clients ---
+    clients = [
+        Client(name="John Mwangi", contact="+254712345678", email="john@example.com"),
+        Client(name="Mary Atieno", contact="+254733112233", email="mary@example.com"),
+        Client(name="Acme Supplies Ltd", contact="+254701998877", email="info@acme.co.ke"),
+    ]
+    db.session.add_all(clients)
+    db.session.flush()  # get ids without committing yet
+
+    # --- Cases ---
+    cases = [
+        Case(title="CIV 55/2025", description="Breach of contract", status="Open",
+             client_id=clients[0].id),
+        Case(title="HCC 102/2025", description="Land dispute", status="Pending",
+             client_id=clients[1].id),
+    ]
+    db.session.add_all(cases)
+
+    # --- Invoices ---  (use FK or relationship object, not a string)
+    invoices = [
+        Invoice(client_id=clients[0].id, amount=50000, status="Unpaid",
+                notes="Legal fees advance"),
+        Invoice(client_id=clients[1].id, amount=20000, status="Paid",
+                notes="Filing fee"),
+    ]
+    db.session.add_all(invoices)
+
+    # --- Events ---
+    events = [
+        Event(date=date(2025, 9, 1),  description="Court Mention - Case CIV 55/2025", type="Court"),
+        Event(date=date(2025, 9,10), description="Client meeting - Mary Atieno",   type="Meeting"),
+    ]
+    db.session.add_all(events)
+
+    # --- Documents --- (optional; keep simple so it never breaks)
+    docs = [
+        Document(title="Pleading Example", filename="pleading.pdf"),
+        Document(title="Invoice Sample",  filename="invoice.pdf"),
+    ]
+    db.session.add_all(docs)
+
+    db.session.commit()
+    print("✅ Demo data seeded.")
