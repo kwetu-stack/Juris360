@@ -67,3 +67,17 @@ def run_seed_force():
 
     # Re-seed fresh demo data
     run_seed()
+def run_seed_force():
+    """
+    Clear demo data and re-insert. 
+    Does NOT touch users table.
+    """
+    Invoice.query.delete()
+    Document.query.delete()
+    Case.query.delete()
+    Event.query.delete()
+    Client.query.delete()
+    db.session.commit()
+
+    run_seed()
+    print("✅ Demo data force-reset and re-seeded.")
