@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block title %}Cases · Juris360{% endblock %}
+{% block content %}
+<h2>Cases</h2>
+<form method="GET">
+  <input type="text" name="q" value="{{ q or '' }}" placeholder="Search cases">
+  <select name="status_id">
+    <option value="">All Statuses</option>
+    {% for s in statuses %}<option value="{{ s.id }}" {{ 'selected' if status_id|int==s.id else '' }}>{{ s.name }}</option>{% endfor %}
+  </select>
+  <button type="submit">Filter</button>
+  <a class="btn" href="{{ url_for('cases.add_case') }}">Add Case</a>
+</form>
+<table>
+  <thead><tr><th>Title</th><th>Status</th><th>Client</th><th>Actions</th></tr></thead>
+  <tbody>{% for c in cases %}
+    <tr>
+      <td>{{ c.title }}</td><td>{{ c.status.name if c.status else '-' }}</td><td>{{ c.client.name if c.client else '-' }}</td>
+      <td>
+        <a href="{{ url_for('cases.edit_case', id=c.id) }}">Edit</a>
+        <form action="{{ url_for('cases.delete_case', id=c.id) }}" method="POST" style="display:inline">
+          <button onclick="return confirm('Delete this case?')">Delete</button>
+        </form>
+      </td>
+    </tr>{% else %}<tr><td colspan="4">No cases.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

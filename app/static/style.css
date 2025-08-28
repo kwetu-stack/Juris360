@@ -1,0 +1,124 @@
+/* ----- Juris360 Pro Theme (drop-in) ----- */
+
+/* Color system */
+:root{
+  --bg:#0b1220;           /* page background */
+  --panel:#0f172a;        /* surfaces */
+  --panel-2:#111b31;
+  --line:#1f2a44;         /* borders */
+  --text:#e5e7eb;
+  --muted:#9aa4b2;
+  --brand:#22c55e;        /* Kenyan-green */
+  --brand-2:#16a34a;
+  --accent:#38bdf8;       /* blue accent */
+  --danger:#ef4444;
+  --warn:#f59e0b;
+  --ok:#22c55e;
+  --shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family: ui-sans-serif, system-ui, "Segoe UI", Inter, Roboto, Arial, sans-serif;
+  color:var(--text);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #0d1a30 0%, transparent 60%),
+    radial-gradient(1200px 600px at 110% -10%, #062235 0%, transparent 60%),
+    linear-gradient(180deg, #06101f, var(--bg) 20%, #0b1424 100%);
+}
+
+/* Layout */
+.wrap{max-width:1120px;margin:0 auto;padding:18px}
+.section{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px; box-shadow:var(--shadow)}
+.grid{display:grid; gap:14px}
+
+/* Navbar */
+.nav{position:sticky;top:0;z-index:50; border-bottom:1px solid var(--line);
+     background:rgba(11,18,32,.8); backdrop-filter: blur(10px)}
+.nav-inner{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 16px}
+.brand{display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.2px}
+.brand .dot{display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--brand)}
+.menu{display:flex; gap:18px; flex-wrap:wrap}
+.menu a{color:var(--muted); text-decoration:none; padding:8px 10px; border-radius:10px; transition:.15s}
+.menu a:hover{color:var(--text); background:var(--panel-2); border:1px solid var(--line)}
+.menu a.active{color:#d1fae5; background:rgba(34,197,94,.1); border:1px solid rgba(34,197,94,.25)}
+
+/* Headings & text */
+h1{margin:0 0 8px; font-size:28px; letter-spacing:.2px}
+h2{margin:6px 0 10px; font-size:20px; color:#cbd5e1}
+.muted{color:var(--muted)}
+
+/* Buttons */
+.btn{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:9px 12px; border-radius:10px; border:1px solid var(--line);
+  background:var(--panel-2); color:var(--text); cursor:pointer; text-decoration:none;
+  transition: transform .04s ease, background .15s ease, border-color .15s ease;
+}
+.btn:hover{background:#0e1a31; border-color:#284067}
+.btn:active{transform:translateY(1px)}
+
+.btn.brand{background:rgba(34,197,94,.1); border-color:rgba(34,197,94,.35); color:#d1fae5}
+.btn.brand:hover{background:rgba(34,197,94,.16)}
+.btn.ghost{background:transparent}
+.btn.danger{background:rgba(239,68,68,.08); border-color:rgba(239,68,68,.35); color:#fecaca}
+.btn.small{padding:6px 9px; font-size:13px; border-radius:8px}
+
+/* Forms */
+label{display:block; font-size:13px; color:var(--muted); margin-bottom:6px}
+input, select, textarea{
+  width:100%; color:var(--text); background:#0b1220;
+  border:1px solid var(--line); border-radius:10px; padding:10px 12px;
+  outline:none; transition: border-color .15s, box-shadow .15s, background .15s;
+}
+input::placeholder, textarea::placeholder{color:#7c8696}
+input:focus, select:focus, textarea:focus{
+  border-color:#2e4b7c; box-shadow:0 0 0 3px rgba(56,189,248,.15);
+}
+form.inline{display:flex; gap:10px; flex-wrap:wrap}
+
+/* Cards */
+.card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px}
+.card-header{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px}
+
+/* Tables */
+.table-wrap{overflow:auto; border-radius:12px; border:1px solid var(--line)}
+table{width:100%; border-collapse:collapse; min-width:720px; background:#0f1b31}
+th, td{padding:12px 14px; font-size:14px; text-align:left; border-bottom:1px solid #1c2a48}
+th{background:#12203b; color:#cbd5e1; position:sticky; top:0; z-index:1}
+tr:hover td{background:#12233f}
+.empty{padding:28px; text-align:center; color:var(--muted)}
+
+/* Badges */
+.badge{display:inline-flex; align-items:center; gap:6px; padding:3px 9px; font-size:12px;
+  border:1px solid var(--line); border-radius:999px; color:#c7d2fe; background:#101c36}
+.badge.ok{border-color:rgba(34,197,94,.35); color:#bbf7d0; background:rgba(34,197,94,.08)}
+.badge.warn{border-color:rgba(245,158,11,.35); color:#fde68a; background:rgba(245,158,11,.08)}
+.badge.danger{border-color:rgba(239,68,68,.35); color:#fecaca; background:rgba(239,68,68,.08)}
+
+/* Flash messages (toasts) */
+.flash{
+  position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:10px; z-index:60
+}
+.toast{
+  background:var(--panel); border:1px solid var(--line); padding:12px 14px; border-radius:12px; box-shadow:var(--shadow);
+  animation: pop .18s ease-out;
+}
+.toast.success{border-color:rgba(34,197,94,.4)}
+.toast.error{border-color:rgba(239,68,68,.4)}
+.toast.info{border-color:#2e4b7c}
+@keyframes pop{from{transform:translateY(6px); opacity:.6} to{transform:none; opacity:1}}
+
+/* Upload area */
+.drop{border:1px dashed var(--line); background:#0b1220; border-radius:14px; padding:18px; text-align:center}
+.drop.drag{border-color:rgba(34,197,94,.6); background:rgba(34,197,94,.06)}
+
+/* Footer */
+.footer{margin:28px 0 12px; text-align:center; color:var(--muted); font-size:13px}
+
+/* Small helpers */
+.row{display:flex; gap:10px; flex-wrap:wrap}
+.right{margin-left:auto}
+.mt-8{margin-top:8px} .mt-12{margin-top:12px} .mt-16{margin-top:16px}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block title %}{{ 'Edit Case' if case else 'Add Case' }} · Juris360{% endblock %}
+{% block content %}
+<h2>{{ 'Edit Case' if case else 'Add Case' }}</h2>
+<form method="POST">
+  <label>Title</label><input name="title" value="{{ case.title if case else '' }}" required>
+  <label>Description</label><textarea name="description">{{ case.description if case else '' }}</textarea>
+  <label>Status</label>
+  <select name="status_id">
+    {% for s in statuses %}<option value="{{ s.id }}" {{ 'selected' if case and case.status_id==s.id else '' }}>{{ s.name }}</option>{% endfor %}
+  </select>
+  <label>Client</label>
+  <select name="client_id">
+    <option value="">-- none --</option>
+    {% for cl in clients %}<option value="{{ cl.id }}" {{ 'selected' if case and case.client_id==cl.id else '' }}>{{ cl.name }}</option>{% endfor %}
+  </select>
+  <button type="submit">{{ 'Update' if case else 'Save' }}</button>
+  <a href="{{ url_for('cases.list_cases') }}">Back</a>
+</form>
+{% endblock %}
