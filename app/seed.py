@@ -5,120 +5,112 @@ from app.models import db, Client, Case, Invoice, Event, Document
 
 # ---------- helpers ----------
 
-def _has_column(model, name: str) -> bool:
-    return name in inspect(model).columns
+def _cols(model_cls):
+    return set(inspect(model_cls).columns.keys())
 
-def _has_relationship(model, name: str) -> bool:
-    return name in inspect(model).relationships
+def _has_col(model_cls, name: str) -> bool:
+    return name in _cols(model_cls)
 
-def _set_client_on(model_cls, obj_kwargs: dict, client_obj: Client):
+def _kw_for_model(model_cls, **pairs):
     """
-    Attach a client to kwargs for a model that may use:
-      - client_id (FK int)
-      - client (relationship to Client)
-      - client (string column)
+    Return kwargs filtered strictly to real column names only.
+    This prevents accidentally setting relationship attributes.
     """
-    if _has_column(model_cls, "client_id"):
-        obj_kwargs["client_id"] = client_obj.id
-    elif _has_relationship(model_cls, "client"):
-        obj_kwargs["client"] = client_obj  # relationship expects a Client instance
-    elif _has_column(model_cls, "client"):
-        obj_kwargs["client"] = client_obj.name  # plain string field
-    # else: no client field; nothing to set
+    allowed = _cols(model_cls)
+    return {k: v for k, v in pairs.items() if k in allowed}
 
-def _set_case_on_document(kwargs: dict, case_obj):
-    if _has_column(Document, "case_id"):
-        kwargs["case_id"] = case_obj.id
-    elif _has_relationship(Document, "case"):
-        kwargs["case"] = case_obj  # relationship
+def _iso(d):
+    return d.isoformat() if isinstance(d, date) else d
 
-def _safe_date(value):
-    """
-    Use strings so it works whether Event.date is a Date or String column.
-    """
-    if isinstance(value, date):
-        return value.isoformat()
-    return value
-
-def _add_many(items):
-    db.session.add_all(items)
+def _commit():
     db.session.commit()
+
+def _add_all(objs):
+    db.session.add_all(objs)
+    _commit()
 
 # ---------- public API ----------
 
-def run_seed() -> None:
+def run_seed():
     """
-    Insert demo data only if there are no clients yet.
-    Safe to run multiple times.
+    Seed only if empty. Idempotent & defensive (columns-only).
+    """
+    if Client.query.count() > 0:
+        print("Seed skipped: Clients already exist.")
+        return
+
+    # ---- Clients ----
+    clients_data = [
+        dict(name="John Mwangi",  contact="+254712345678", email="john@example.com"),
+        dict(name="Mary Atieno",  contact="+254733112233", email="mary@example.com"),
+        dict(name="Acme Supplies Ltd", contact="+254701998877", email="info@acme.co.ke"),
+    ]
+    clients = [Client(**_kw_for_model(Client, **d)) for d in clients_data]
+    _add_all(clients)
+
+    # ---- Cases ----
+    cases = []
+    c1 = dict(title="CIV 55/2025", description="Breach of contract", status="Open")
+    c2 = dict(title="HCC 102/2025", description="Land dispute", status="Pending")
+    # link by FK if present
+    if _has_col(Case, "client_id"):
+        c1["client_id"] = clients[0].id
+        c2["client_id"] = clients[1].id
+    cases = [Case(**_kw_for_model(Case, **c1)), Case(**_kw_for_model(Case, **c2))]
+    _add_all(cases)
+
+    # ---- Invoices ----
+    invs = []
+    i1 = dict(amount=50000, status="Unpaid", notes="Legal fees advance")
+    i2 = dict(amount=20000, status="Paid",   notes="Filing fee")
+    if _has_col(Invoice, "client_id"):
+        i1["client_id"] = clients[0].id
+        i2["client_id"] = clients[1].id
+    elif _has_col(Invoice, "client"):  # some schemas store client as plain string
+        i1["client"] = clients[0].name
+        i2["client"] = clients[1].name
+    invs = [Invoice(**_kw_for_model(Invoice, **i1)), Invoice(**_kw_for_model(Invoice, **i2))]
+    _add_all(invs)
+
+    # ---- Events ----
+    ev_data = [
+        dict(date=_iso(date(2025, 9, 1)),  description="Court Mention - Case CIV 55/2025")),
+        dict(date=_iso(date(2025, 9,10)),  description="Client meeting - Mary Atieno")),
+    ]
+    # include type only if it's a real column
+    if _has_col(Event, "type"):
+        ev_data[0]["type"] = "Court"
+        ev_data[1]["type"] = "Meeting"
+    events = [Event(**_kw_for_model(Event, **d)) for d in ev_data]
+    _add_all(events)
+
+    # ---- Documents ----
+    d1 = dict(title="Pleading Example", filename="pleading.pdf")
+    d2 = dict(title="Invoice Sample",   filename="invoice.pdf")
+    # associate to cases by FK if available (columns-only)
+    if _has_col(Document, "case_id"):
+        d1["case_id"] = cases[0].id
+        d2["case_id"] = cases[1].id
+    docs = [Document(**_kw_for_model(Document, **d1)),
+            Document(**_kw_for_model(Document, **d2))]
+    _add_all(docs)
+
+    print("✅ Demo data seeded.")
+
+
+def run_seed_force():
+    """
+    Wipe demo tables (not users/auth) and re-seed using the safe seeder.
     """
     try:
-        if Client.query.count() > 0:
-            print("Seed skipped: Clients already exist.")
-            return
-
-        # --- Clients ---
-        clients = [
-            Client(name="John Mwangi",  contact="+254712345678", email="john@example.com"),
-            Client(name="Mary Atieno",  contact="+254733112233", email="mary@example.com"),
-            Client(name="Acme Supplies Ltd", contact="+254701998877", email="info@acme.co.ke"),
-        ]
-        _add_many(clients)
-
-        # --- Cases ---
-        cases = []
-        case1 = {"title":"CIV 55/2025", "description":"Breach of contract", "status":"Open"}
-        _set_client_on(Case, case1, clients[0])
-        case2 = {"title":"HCC 102/2025", "description":"Land dispute", "status":"Pending"}
-        _set_client_on(Case, case2, clients[1])
-        cases = [Case(**case1), Case(**case2)]
-        _add_many(cases)
-
-        # --- Invoices ---
-        inv1 = {"amount":50000, "status":"Unpaid", "notes":"Legal fees advance"}
-        _set_client_on(Invoice, inv1, clients[0])
-        inv2 = {"amount":20000, "status":"Paid",   "notes":"Filing fee"}
-        _set_client_on(Invoice, inv2, clients[1])
-        invoices = [Invoice(**inv1), Invoice(**inv2)]
-        _add_many(invoices)
-
-        # --- Events ---
-        events = [
-            Event(date=_safe_date(date(2025, 9, 1)),  description="Court Mention - Case CIV 55/2025",  **({"type":"Court"}   if _has_column(Event,"type") else {})),
-            Event(date=_safe_date(date(2025, 9,10)),  description="Client meeting - Mary Atieno",       **({"type":"Meeting"} if _has_column(Event,"type") else {})),
-        ]
-        _add_many(events)
-
-        # --- Documents ---
-        d1 = {"title":"Pleading Example", "filename":"pleading.pdf"}
-        d2 = {"title":"Invoice Sample",   "filename":"invoice.pdf"}
-        if cases:
-            _set_case_on_document(d1, cases[0])
-            _set_case_on_document(d2, cases[1])
-        docs = [Document(**d1), Document(**d2)]
-        _add_many(docs)
-
-        print("✅ Demo data seeded.")
-
-    except Exception as e:
-        db.session.rollback()
-        print(f"❌ Seed failed: {e}")
-        raise
-
-
-def run_seed_force() -> None:
-    """
-    Clear demo tables (keeps users/auth) and re-seed.
-    """
-    try:
-        # Delete in child->parent order
+        # Delete children before parents
         if Document.query.count(): Document.query.delete(synchronize_session=False)
         if Invoice.query.count():  Invoice.query.delete(synchronize_session=False)
         if Case.query.count():     Case.query.delete(synchronize_session=False)
         if Event.query.count():    Event.query.delete(synchronize_session=False)
         if Client.query.count():   Client.query.delete(synchronize_session=False)
-        db.session.commit()
+        _commit()
         print("🧹 Demo tables cleared.")
-
         run_seed()
         print("✅ Demo data force-reset and re-seeded.")
     except Exception as e:
