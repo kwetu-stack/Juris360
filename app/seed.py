@@ -1,86 +1,177 @@
 # app/seed.py
+from __future__ import annotations
 
-from datetime import date
-from app.models import db, Client, Case, Invoice, Event, Document
+from datetime import date, timedelta
 
-# ------------ helpers ------------
+from app import db
+from app.models import (
+    Client,
+    Case,
+    Invoice,
+    Event,
+    Document,
+    # ⚠️ If your model is named CaseStatus instead of Status,
+    # change the import below to:  from app.models import CaseStatus as Status
+    Status,
+)
 
-def _iso(d: date) -> str:
-    """Return ISO date string (YYYY-MM-DD)."""
-    return d.isoformat()
 
-def _wipe_all():
-    """Remove existing demo rows in a safe order (children → parents)."""
-    db.session.query(Document).delete()
-    db.session.query(Invoice).delete()
-    db.session.query(Case).delete()
-    db.session.query(Event).delete()
-    db.session.query(Client).delete()
-    db.session.commit()
+# ---------- helpers ----------
+
+def get_or_create(model, **filters):
+    """ORM-safe get or create. Flush so FK ids are available in the same txn."""
+    obj = model.query.filter_by(**filters).first()
+    if obj:
+        return obj
+    obj = model(**filters)
+    db.session.add(obj)
+    db.session.flush()
+    return obj
+
+
+def _wipe_demo_data():
+    """
+    Remove existing demo rows in correct FK order so the seed is repeatable.
+    Adjust filters if you want to keep real data.
+    """
+    # Child tables first (depend on Case)
+    Event.query.delete()      # events depend on case
+    Document.query.delete()   # documents depend on case
+    Invoice.query.delete()    # invoices may depend on case
+
+    # Cases next
+    Case.query.delete()
+
+    # Optionally wipe clients/statuses if you want a truly clean demo
+    # (If you have real/production rows you want to keep, filter here instead.)
+    Client.query.delete()
+    Status.query.delete()
+
+    db.session.flush()
+
+
+# ---------- main seed payload ----------
 
 def _insert_demo():
-    """Insert a coherent demo dataset."""
+    """Create a clean, minimal but realistic demo dataset."""
 
-    # --- Clients ---
-    c1 = Client(name="John Mwangi",  contact="+254712345678", email="john@example.com")
-    c2 = Client(name="Mary Atieno",  contact="+254733112233", email="mary@example.com")
-    c3 = Client(name="Acme Supplies Ltd", contact="+254701998877", email="info@acme.co.ke")
+    # 1) Reference/lookup rows as ORM INSTANCES (not strings)
+    #    This is the key fix: Case.status is a RELATIONSHIP → must assign a Status instance.
+    status_open = get_or_create(Status, name="OPEN")
+    status_closed = get_or_create(Status, name="CLOSED")
 
-    db.session.add_all([c1, c2, c3])
-    db.session.commit()  # ensure IDs are available
+    client_dc = get_or_create(
+        Client,
+        name="Digital Club",
+        defaults={}  # ignored by our simple get_or_create; keep for clarity
+    )
+    # Optional: set/update details if newly created
+    if not getattr(client_dc, "phone", None):
+        client_dc.phone = "+254 716 202 632"
+    if not getattr(client_dc, "email", None):
+        client_dc.email = "digitalclub@example.com"
 
-    # --- Cases ---
+    client_acme = get_or_create(
+        Client,
+        name="Acme Ltd"
+    )
+    if not getattr(client_acme, "phone", None):
+        client_acme.phone = "+254 700 000 000"
+    if not getattr(client_acme, "email", None):
+        client_acme.email = "acme@example.com"
+
+    # 2) Cases — assign relationship *instances*
     case1 = Case(
-        title="CIV 55/2025",
-        description="Breach of contract",
-        status="Open",
-        client_id=c1.id,
+        title="Breach of Contract – Supplier Delay",
+        opened_on=date.today(),
+        client=client_dc,      # relationship
+        status=status_open,    # relationship (✅ FIX: not "OPEN" string)
     )
     case2 = Case(
-        title="HCC 102/2025",
-        description="Land dispute",
-        status="Pending",
-        client_id=c2.id,
+        title="Debt Recovery – Outstanding Invoice #INV-1042",
+        opened_on=date.today() - timedelta(days=10),
+        client=client_acme,    # relationship
+        status=status_open,    # relationship
     )
+
     db.session.add_all([case1, case2])
+    db.session.flush()  # ensure case ids exist for children
 
-    # --- Invoices ---
-    inv1 = Invoice(client=c1.name, amount=50000, status="Unpaid", notes="Legal fees advance")
-    inv2 = Invoice(client=c2.name, amount=20000, status="Paid",   notes="Filing fee")
-    db.session.add_all([inv1, inv2])
-
-    # --- Events ---
-    evt1 = Event(
-        date=_iso(date(2025, 9, 1)),
-        type="Court",
-        description="Court Mention - Case CIV 55/2025"
+    # 3) Events — attach via relationship
+    ev1 = Event(
+        case=case1,
+        title="Filed plaint at Milimani Commercial",
+        kind="FILING",
+        event_date=date.today(),
     )
-    evt2 = Event(
-        date=_iso(date(2025, 9, 10)),
-        type="Meeting",
-        description="Client meeting - Mary Atieno"
+    ev2 = Event(
+        case=case1,
+        title="Service of Summons – Defendant",
+        kind="SERVICE",
+        event_date=date.today() + timedelta(days=3),
     )
-    db.session.add_all([evt1, evt2])
+    ev3 = Event(
+        case=case2,
+        title="Demand Letter Issued",
+        kind="CORRESPONDENCE",
+        event_date=date.today() - timedelta(days=9),
+    )
 
-    # --- Documents ---
-    doc1 = Document(title="Pleading Example", filename="pleading.pdf", notes="Sample pleading")
-    doc2 = Document(title="Invoice Sample",  filename="invoice.pdf",  notes="Sample invoice")
-    db.session.add_all([doc1, doc2])
+    # 4) Documents — attach via relationship
+    doc1 = Document(
+        case=case1,
+        filename="plaint.pdf",
+        storage_path="uploads/plaint.pdf",
+        doc_type="PLEADING",
+    )
 
-    db.session.commit()
+    # 5) Invoices — if your Invoice has a relationship to Case, this is fine;
+    #    if it uses case_id, swap to case_id=case1.id
+    inv1 = Invoice(
+        case=case1,
+        number="INV-2025-0001",
+        amount=15000.00,
+        status="UNPAID",  # assuming this is a scalar column on Invoice (OK as string)
+        issue_date=date.today(),
+        due_date=date.today() + timedelta(days=14),
+    )
 
-# ------------ public API ------------
+    db.session.add_all([ev1, ev2, ev3, doc1, inv1])
+    db.session.flush()
 
-def run_seed():
-    """Safe seeding: only inserts if no Clients exist."""
-    if db.session.query(Client).count() > 0:
-        print("⚠️ Seed skipped: Clients already exist.")
-        return
-    _insert_demo()
-    print("✅ Demo data seeded.")
+
+# ---------- public entry points ----------
+
+def run_seed_safe():
+    """
+    Insert demo data ONLY if it doesn't already exist.
+    Won't wipe — safe for semi-populated DBs.
+    """
+    try:
+        has_any_case = db.session.query(Case.id).first() is not None
+        if has_any_case:
+            print("ℹ️ Seed skipped: cases already exist.")
+            return
+        _insert_demo()
+        db.session.commit()
+        print("✅ Seed (safe) completed.")
+    except Exception as e:
+        db.session.rollback()
+        print("❌ Seed (safe) failed:", e)
+        raise
+
 
 def run_seed_force():
-    """Destructive reset: wipes existing demo rows and re-inserts."""
-    _wipe_all()
-    _insert_demo()
-    print("✅ Demo data reset and re-seeded.")
+    """
+    Force re-seed: wipes demo data then inserts fresh demo rows.
+    Matches how you’ve been calling it from Render shell.
+    """
+    try:
+        _wipe_demo_data()
+        _insert_demo()
+        db.session.commit()
+        print("✅ Seed (force) completed.")
+    except Exception as e:
+        db.session.rollback()
+        print("❌ Seed (force) failed:", e)
+        raise

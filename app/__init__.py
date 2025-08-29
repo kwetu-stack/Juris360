@@ -1,3 +1,4 @@
+# app/__init__.py
 import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
@@ -7,11 +8,23 @@ from dotenv import load_dotenv
 db = SQLAlchemy()
 login_manager = LoginManager()
 
+def _normalize_db_url(url: str) -> str:
+    """
+    Render often provides DATABASE_URL starting with 'postgres://'.
+    SQLAlchemy needs 'postgresql://' to load the correct dialect.
+    """
+    if url and url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql://", 1)
+    return url
+
 def create_app():
     load_dotenv()
     app = Flask(__name__, static_folder="static", template_folder="templates")
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-key")
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///data/juris360.db")
+
+    raw_db_url = os.environ.get("DATABASE_URL", "sqlite:///data/juris360.db")
+    app.config["SQLALCHEMY_DATABASE_URI"] = _normalize_db_url(raw_db_url)
+
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["UPLOADS_DIR"] = os.environ.get("UPLOADS_DIR", "data/uploads")
     os.makedirs(app.config["UPLOADS_DIR"], exist_ok=True)
@@ -37,8 +50,9 @@ def create_app():
             try:
                 from .models import Client
                 if Client.query.count() == 0:
-                    from .seed import run_seed  # factor your seed_demo.py into app/seed.py
-                    run_seed()
+                    # CHANGED: call the function that exists in seed.py
+                    from .seed import run_seed_safe
+                    run_seed_safe()
             except Exception as e:
                 # Keep startup resilient; log to console but don't crash the app.
                 print(f"[AUTO_SEED] Skipped due to error: {e}")
