@@ -19,25 +19,16 @@ def get_or_create(model, **filters):
     db.session.flush()
     return obj
 
-
 def _status_model():
-    """
-    Discover the related Status-like model from Case.status relationship,
-    regardless of its actual class name (Status, CaseStatus, etc.).
-    """
+    """Discover Case.status related model regardless of actual class name."""
     rel = sa_inspect(Case).relationships.get("status")
     if not rel:
         raise RuntimeError("Case.status relationship not found. Check your models.")
-    return rel.mapper.class_  # the ORM class for the status relation
-
+    return rel.mapper.class_
 
 def _get_or_create_status(label: str):
-    """
-    Create/find a status row using a best-effort string field.
-    Tries typical field names: name/code/label/value/title/status.
-    """
+    """Create/find a status row using a best-effort string field name."""
     StatusModel = _status_model()
-    # pick first available string-like attribute name
     for field in ("name", "code", "label", "value", "title", "status"):
         if hasattr(StatusModel, field):
             filt = {field: label}
@@ -53,6 +44,13 @@ def _get_or_create_status(label: str):
         f"(tried name/code/label/value/title/status)."
     )
 
+def set_first_attr(obj, names: tuple[str, ...], value):
+    """Set the first attribute that exists on obj from names; return the name or None."""
+    for n in names:
+        if hasattr(obj, n):
+            setattr(obj, n, value)
+            return n
+    return None
 
 def _wipe_demo_data():
     """Make the seed repeatable by cleaning tables in FK order."""
@@ -61,7 +59,7 @@ def _wipe_demo_data():
     Invoice.query.delete()
     Case.query.delete()
     Client.query.delete()
-    # Note: we do NOT delete status rows; they’re reusable across seeds.
+    # Keep status rows; they’re reusable.
     db.session.flush()
 
 
@@ -69,80 +67,76 @@ def _wipe_demo_data():
 
 def _insert_demo():
     """Create a clean, minimal but realistic demo dataset."""
-    # 1) ensure clients
-    client_dc = get_or_create(
-        Client, name="Digital Club"
-    )
+    # Clients
+    client_dc = get_or_create(Client, name="Digital Club")
     if not getattr(client_dc, "phone", None):
         client_dc.phone = "+254 716 202 632"
     if not getattr(client_dc, "email", None):
         client_dc.email = "digitalclub@example.com"
 
-    client_acme = get_or_create(
-        Client, name="Acme Ltd"
-    )
+    client_acme = get_or_create(Client, name="Acme Ltd")
     if not getattr(client_acme, "phone", None):
         client_acme.phone = "+254 700 000 000"
     if not getattr(client_acme, "email", None):
         client_acme.email = "acme@example.com"
 
-    # 2) get/create status instances dynamically (key fix)
+    # Status (relationship instance)
     status_open = _get_or_create_status("OPEN")
-    # status_closed = _get_or_create_status("CLOSED")  # available if needed
 
-    # 3) cases — assign relationship instances
+    # Cases — set whichever date field exists
     case1 = Case(
         title="Breach of Contract – Supplier Delay",
-        opened_on=date.today(),
         client=client_dc,
-        status=status_open,  # relationship instance (not string)
+        status=status_open,
     )
+    set_first_attr(
+        case1,
+        ("opened_on", "opened_at", "filed_on", "date_opened", "created_on", "created_at", "start_date", "date"),
+        date.today(),
+    )
+
     case2 = Case(
         title="Debt Recovery – Outstanding Invoice #INV-1042",
-        opened_on=date.today() - timedelta(days=10),
         client=client_acme,
         status=status_open,
     )
+    set_first_attr(
+        case2,
+        ("opened_on", "opened_at", "filed_on", "date_opened", "created_on", "created_at", "start_date", "date"),
+        date.today() - timedelta(days=10),
+    )
+
     db.session.add_all([case1, case2])
     db.session.flush()
 
-    # 4) events
-    ev1 = Event(
-        case=case1,
-        title="Filed plaint at Milimani Commercial",
-        kind="FILING",
-        event_date=date.today(),
-    )
-    ev2 = Event(
-        case=case1,
-        title="Service of Summons – Defendant",
-        kind="SERVICE",
-        event_date=date.today() + timedelta(days=3),
-    )
-    ev3 = Event(
-        case=case2,
-        title="Demand Letter Issued",
-        kind="CORRESPONDENCE",
-        event_date=date.today() - timedelta(days=9),
-    )
+    # Events — set case + whichever date field exists
+    ev1 = Event(case=case1, title="Filed plaint at Milimani Commercial", kind="FILING")
+    set_first_attr(ev1, ("event_date", "date", "on", "scheduled_for", "due_on", "due_date"), date.today())
 
-    # 5) documents
+    ev2 = Event(case=case1, title="Service of Summons – Defendant", kind="SERVICE")
+    set_first_attr(ev2, ("event_date", "date", "on", "scheduled_for", "due_on", "due_date"), date.today() + timedelta(days=3))
+
+    ev3 = Event(case=case2, title="Demand Letter Issued", kind="CORRESPONDENCE")
+    set_first_attr(ev3, ("event_date", "date", "on", "scheduled_for", "due_on", "due_date"), date.today() - timedelta(days=9))
+
+    # Documents
     doc1 = Document(
         case=case1,
         filename="plaint.pdf",
         storage_path="uploads/plaint.pdf",
-        doc_type="PLEADING",
     )
+    # If your Document has a type/name field:
+    set_first_attr(doc1, ("doc_type", "type", "kind", "category", "label"), "PLEADING")
 
-    # 6) invoices (assuming Invoice.status is a scalar string field)
+    # Invoice — attach to case; set dates via detection
     inv1 = Invoice(
-        case=case1,  # or case_id=case1.id if your model uses FK field
+        case=case1,  # use case_id=case1.id if your model uses FK field instead of relationship
         number="INV-2025-0001",
         amount=15000.00,
-        status="UNPAID",
-        issue_date=date.today(),
-        due_date=date.today() + timedelta(days=14),
+        status="UNPAID",  # assuming scalar column on Invoice
     )
+    set_first_attr(inv1, ("issue_date", "issued_on", "date", "created_at", "created_on"), date.today())
+    set_first_attr(inv1, ("due_date", "due_on", "deadline"), date.today() + timedelta(days=14))
 
     db.session.add_all([ev1, ev2, ev3, doc1, inv1])
     db.session.flush()
