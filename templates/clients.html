@@ -1,0 +1,11 @@
+{% extends 'base.html' %}{% set active='clients' %}
+{% block title %}Clients · Juris360{% endblock %}
+{% block content %}
+<h1>Clients</h1>
+<div class="actions"><a class="btn btn-primary" href="{{ url_for('client_new') }}">+ New</a></div>
+<table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Address</th><th></th></tr></thead>
+<tbody>{% for c in items %}
+<tr><td>{{ c.name }}</td><td>{{ c.phone or '—' }}</td><td>{{ c.email or '—' }}</td><td>{{ c.address or '—' }}</td>
+<td><a href="{{ url_for('client_edit', id=c.id) }}">Edit</a> · <a href="{{ url_for('client_delete', id=c.id) }}">Delete</a></td></tr>
+{% endfor %}</tbody></table>
+{% endblock %}

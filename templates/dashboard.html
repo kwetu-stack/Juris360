@@ -1,0 +1,10 @@
+{% extends 'base.html' %}{% set active='dashboard' %}
+{% block title %}Dashboard · Juris360{% endblock %}
+{% block content %}
+<h1>Welcome to Juris360</h1>
+<div class="metrics">
+  <div class="metric"><div class="label">Clients</div><div class="value">{{ counts['clients'] }}</div></div>
+  <div class="metric"><div class="label">Pending Cases</div><div class="value">{{ counts['pending_cases'] }}</div></div>
+  <div class="metric"><div class="label">Pending Invoices</div><div class="value">{{ counts['pending_invoices'] }}</div></div>
+</div>
+{% endblock %}

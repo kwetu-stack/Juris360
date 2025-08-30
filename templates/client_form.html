@@ -1,0 +1,12 @@
+{% extends 'base.html' %}{% set active='clients' %}
+{% block title %}{{ 'Edit' if item else 'New' }} Client · Juris360{% endblock %}
+{% block content %}
+<h1>{{ 'Edit' if item else 'New' }} Client</h1>
+<form method="post">
+<label>Name</label><input type="text" name="name" value="{{ item.name if item else '' }}" required>
+<label>Phone</label><input type="text" name="phone" value="{{ item.phone if item else '' }}">
+<label>Email</label><input type="email" name="email" value="{{ item.email if item else '' }}">
+<label>Address</label><input type="text" name="address" value="{{ item.address if item else '' }}">
+<div class="actions"><button class="btn btn-primary" type="submit">Save</button>
+<a class="btn btn-secondary" href="{{ url_for('clients') }}">Cancel</a></div></form>
+{% endblock %}

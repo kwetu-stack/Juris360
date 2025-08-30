@@ -1,0 +1,11 @@
+{% extends 'base.html' %}{% set active='hearings' %}
+{% block title %}Hearings · Juris360{% endblock %}
+{% block content %}
+<h1>Hearings</h1>
+<div class="actions"><a class="btn btn-primary" href="{{ url_for('hearing_new') }}">+ New</a></div>
+<table><thead><tr><th>Date</th><th>Case</th><th>Venue</th><th>Judge</th><th>Status</th><th></th></tr></thead><tbody>
+{% for h in items %}<tr>
+<td>{{ h.date_time }}</td><td>{{ h.case.number if h.case else '—' }} — {{ h.case.title if h.case else '' }}</td>
+<td>{{ h.venue or '—' }}</td><td>{{ h.judge or '—' }}</td><td>{{ h.status }}</td>
+<td><a href="{{ url_for('hearing_edit', id=h.id) }}">Edit</a> · <a href="{{ url_for('hearing_delete', id=h.id) }}">Delete</a></td></tr>{% endfor %}
+</tbody></table>{% endblock %}

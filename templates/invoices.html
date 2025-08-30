@@ -1,0 +1,11 @@
+{% extends 'base.html' %}{% set active='invoices' %}
+{% block title %}Invoices · Juris360{% endblock %}
+{% block content %}
+<h1>Invoices</h1>
+<div class="actions"><a class="btn btn-primary" href="{{ url_for('invoice_new') }}">+ New</a></div>
+<table><thead><tr><th>No.</th><th>Client</th><th>Case</th><th>Issue</th><th>Due</th><th>Status</th><th>Total</th><th></th></tr></thead><tbody>
+{% for inv in items %}<tr>
+<td>{{ inv.number }}</td><td>{{ inv.client.name if inv.client else '—' }}</td><td>{{ inv.case.number if inv.case else '—' }}</td>
+<td>{{ inv.issue_date }}</td><td>{{ inv.due_date }}</td><td>{{ inv.status }}</td><td>{{ '%.2f'|format(inv.total_amount or 0) }}</td>
+<td><a href="{{ url_for('invoice_edit', id=inv.id) }}">Edit</a> · <a href="{{ url_for('invoice_delete', id=inv.id) }}">Delete</a></td></tr>{% endfor %}
+</tbody></table>{% endblock %}
