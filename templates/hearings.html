@@ -1,11 +1,60 @@
-{% extends 'base.html' %}{% set active='hearings' %}
-{% block title %}Hearings · Juris360{% endblock %}
+{% extends "base.html" %}
 {% block content %}
-<h1>Hearings</h1>
-<div class="actions"><a class="btn btn-primary" href="{{ url_for('hearing_new') }}">+ New</a></div>
-<table><thead><tr><th>Date</th><th>Case</th><th>Venue</th><th>Judge</th><th>Status</th><th></th></tr></thead><tbody>
-{% for h in items %}<tr>
-<td>{{ h.date_time }}</td><td>{{ h.case.number if h.case else '—' }} — {{ h.case.title if h.case else '' }}</td>
-<td>{{ h.venue or '—' }}</td><td>{{ h.judge or '—' }}</td><td>{{ h.status }}</td>
-<td><a href="{{ url_for('hearing_edit', id=h.id) }}">Edit</a> · <a href="{{ url_for('hearing_delete', id=h.id) }}">Delete</a></td></tr>{% endfor %}
-</tbody></table>{% endblock %}
+<div class="card">
+  <div class="section-head">
+    <h1>Hearings</h1>
+    <form method="post" action="{{ url_for('hearings_create') }}" class="inline">
+      <label>Case<br>
+        <select name="case_id" class="select" required>
+          {% for c in cases %}<option value="{{ c.id }}">{{ c.ref }} — {{ c.title }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Date<br><input class="input" type="date" name="date" required></label>
+      <label>Status<br>
+        <select name="status_id" class="select" required>
+          {% for s in status %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Notes<br><input class="input" name="notes"></label>
+      <button class="btn primary">Add</button>
+    </form>
+  </div>
+  <table>
+    <thead><tr><th>Date</th><th>Case</th><th>Status</th><th>Notes</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.date.strftime('%Y-%m-%d') if r.date else '' }}</td>
+        <td>{{ r.case.ref }} — {{ r.case.title }}</td>
+        <td><span class="badge {{ r.status.name|lower }}">{{ r.status.name }}</span></td>
+        <td>{{ r.notes }}</td>
+        <td class="actions">
+          <a class="btn ghost" href="{{ url_for('hearings_edit', id=r.id) }}">Edit</a>
+          <form method="post" action="{{ url_for('hearings_delete', id=r.id) }}" onsubmit="return confirm('Delete hearing?')">
+            <button class="btn danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not rows %}<tr><td colspan="5" class="small">No hearings yet.</td></tr>{% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% if edit %}
+<div class="card">
+  <h2>Edit Hearing</h2>
+  <form method="post" action="{{ url_for('hearings_update', id=edit.id) }}" class="grid cols-3">
+    <label>Case<select name="case_id" class="select" required>
+      {% for c in cases %}<option value="{{ c.id }}" {% if edit.case_id==c.id %}selected{% endif %}>{{ c.ref }} — {{ c.title }}</option>{% endfor %}
+    </select></label>
+    <label>Date<input class="input" type="date" name="date" value="{{ edit.date.strftime('%Y-%m-%d') if edit.date else '' }}" required></label>
+    <label>Status<select name="status_id" class="select" required>
+      {% for s in status %}<option value="{{ s.id }}" {% if edit.status_id==s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+    </select></label>
+    <label style="grid-column:1/-1">Notes<input class="input" name="notes" value="{{ edit.notes }}"></label>
+    <div><button class="btn primary">Save</button></div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

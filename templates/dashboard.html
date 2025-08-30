@@ -1,10 +1,42 @@
-{% extends 'base.html' %}{% set active='dashboard' %}
-{% block title %}Dashboard · Juris360{% endblock %}
+{% extends "base.html" %}
 {% block content %}
-<h1>Welcome to Juris360</h1>
-<div class="metrics">
-  <div class="metric"><div class="label">Clients</div><div class="value">{{ counts['clients'] }}</div></div>
-  <div class="metric"><div class="label">Pending Cases</div><div class="value">{{ counts['pending_cases'] }}</div></div>
-  <div class="metric"><div class="label">Pending Invoices</div><div class="value">{{ counts['pending_invoices'] }}</div></div>
+<div class="kpi">
+  <div class="tile">
+    <div class="label">Clients</div>
+    <div class="value">{{ metrics.clients }}</div>
+  </div>
+  <div class="tile">
+    <div class="label">Pending Cases</div>
+    <div class="value">{{ metrics.pending_cases }}</div>
+  </div>
+  <div class="tile">
+    <div class="label">Pending Invoices</div>
+    <div class="value">{{ metrics.pending_invoices }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-head">
+    <h1>Recent Cases</h1>
+  </div>
+  <table>
+    <thead><tr><th>Ref</th><th>Title</th><th>Client</th><th>Type</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for c in recent_cases %}
+      <tr>
+        <td>{{ c.ref }}</td>
+        <td>{{ c.title }}</td>
+        <td>{{ c.client.name }}</td>
+        <td>{{ c.case_type.name }}</td>
+        <td>
+          <span class="badge {{ c.status.name|lower }}">{{ c.status.name }}</span>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not recent_cases %}
+      <tr><td colspan="5" class="small">No cases yet.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
 </div>
 {% endblock %}

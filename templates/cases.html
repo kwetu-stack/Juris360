@@ -1,11 +1,69 @@
-{% extends 'base.html' %}{% set active='cases' %}
-{% block title %}Cases · Juris360{% endblock %}
+{% extends "base.html" %}
 {% block content %}
-<h1>Cases</h1>
-<div class="actions"><a class="btn btn-primary" href="{{ url_for('case_new') }}">+ New</a></div>
-<table><thead><tr><th>Case No</th><th>Title</th><th>Client</th><th>Type</th><th>Status</th><th>Next Hearing</th><th></th></tr></thead><tbody>
-{% for c in items %}<tr>
-<td>{{ c.number }}</td><td>{{ c.title }}</td><td>{{ c.client.name if c.client else '—' }}</td>
-<td>{{ c.type.name if c.type else '—' }}</td><td>{{ c.status.name if c.status else '—' }}</td><td>{{ c.next_hearing_date or '—' }}</td>
-<td><a href="{{ url_for('case_edit', id=c.id) }}">Edit</a> · <a href="{{ url_for('case_delete', id=c.id) }}">Delete</a></td></tr>{% endfor %}
-</tbody></table>{% endblock %}
+<div class="card">
+  <div class="section-head">
+    <h1>Cases</h1>
+    <form method="post" action="{{ url_for('cases_create') }}" class="inline">
+      <label>Ref<br><input class="input" name="ref" required></label>
+      <label>Title<br><input class="input" name="title" required></label>
+      <label>Client<br>
+        <select name="client_id" class="select" required>
+          {% for c in clients %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Type<br>
+        <select name="case_type_id" class="select" required>
+          {% for t in types %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Status<br>
+        <select name="status_id" class="select" required>
+          {% for s in status %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <button class="btn primary">Add</button>
+    </form>
+  </div>
+  <table>
+    <thead><tr><th>Ref</th><th>Title</th><th>Client</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.ref }}</td>
+        <td>{{ r.title }}</td>
+        <td>{{ r.client.name }}</td>
+        <td>{{ r.case_type.name }}</td>
+        <td><span class="badge {{ r.status.name|lower }}">{{ r.status.name }}</span></td>
+        <td class="actions">
+          <a class="btn ghost" href="{{ url_for('cases_edit', id=r.id) }}">Edit</a>
+          <form method="post" action="{{ url_for('cases_delete', id=r.id) }}" onsubmit="return confirm('Delete case?')">
+            <button class="btn danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not rows %}<tr><td colspan="6" class="small">No cases yet.</td></tr>{% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% if edit %}
+<div class="card">
+  <h2>Edit Case</h2>
+  <form method="post" action="{{ url_for('cases_update', id=edit.id) }}" class="grid cols-3">
+    <label>Ref<input class="input" name="ref" value="{{ edit.ref }}" required></label>
+    <label>Title<input class="input" name="title" value="{{ edit.title }}" required></label>
+    <label>Client<select name="client_id" class="select" required>
+      {% for c in clients %}<option value="{{ c.id }}" {% if edit.client_id==c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+    </select></label>
+    <label>Type<select name="case_type_id" class="select" required>
+      {% for t in types %}<option value="{{ t.id }}" {% if edit.case_type_id==t.id %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
+    </select></label>
+    <label>Status<select name="status_id" class="select" required>
+      {% for s in status %}<option value="{{ s.id }}" {% if edit.status_id==s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+    </select></label>
+    <div><button class="btn primary">Save</button></div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

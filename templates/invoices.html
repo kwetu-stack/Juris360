@@ -1,11 +1,72 @@
-{% extends 'base.html' %}{% set active='invoices' %}
-{% block title %}Invoices · Juris360{% endblock %}
+{% extends "base.html" %}
 {% block content %}
-<h1>Invoices</h1>
-<div class="actions"><a class="btn btn-primary" href="{{ url_for('invoice_new') }}">+ New</a></div>
-<table><thead><tr><th>No.</th><th>Client</th><th>Case</th><th>Issue</th><th>Due</th><th>Status</th><th>Total</th><th></th></tr></thead><tbody>
-{% for inv in items %}<tr>
-<td>{{ inv.number }}</td><td>{{ inv.client.name if inv.client else '—' }}</td><td>{{ inv.case.number if inv.case else '—' }}</td>
-<td>{{ inv.issue_date }}</td><td>{{ inv.due_date }}</td><td>{{ inv.status }}</td><td>{{ '%.2f'|format(inv.total_amount or 0) }}</td>
-<td><a href="{{ url_for('invoice_edit', id=inv.id) }}">Edit</a> · <a href="{{ url_for('invoice_delete', id=inv.id) }}">Delete</a></td></tr>{% endfor %}
-</tbody></table>{% endblock %}
+<div class="card">
+  <div class="section-head">
+    <h1>Invoices</h1>
+    <form method="post" action="{{ url_for('invoices_create') }}" class="inline">
+      <label>No.<br><input class="input" name="number" required></label>
+      <label>Client<br>
+        <select name="client_id" class="select" required>
+          {% for c in clients %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Case<br>
+        <select name="case_id" class="select" required>
+          {% for c in cases %}<option value="{{ c.id }}">{{ c.ref }} — {{ c.title }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Status<br>
+        <select name="status_id" class="select" required>
+          {% for s in status %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Amount<br><input class="input" type="number" step="0.01" name="amount" required></label>
+      <label>Due Date<br><input class="input" type="date" name="due_date"></label>
+      <button class="btn primary">Add</button>
+    </form>
+  </div>
+  <table>
+    <thead><tr><th>No.</th><th>Client</th><th>Case</th><th>Status</th><th>Amount</th><th>Due</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.number }}</td>
+        <td>{{ r.client.name }}</td>
+        <td>{{ r.case.ref }} — {{ r.case.title }}</td>
+        <td><span class="badge {{ r.status.name|lower }}">{{ r.status.name }}</span></td>
+        <td>{{ '%.2f'|format(r.amount or 0) }}</td>
+        <td>{{ r.due_date.strftime('%Y-%m-%d') if r.due_date else '' }}</td>
+        <td class="actions">
+          <a class="btn ghost" href="{{ url_for('invoices_edit', id=r.id) }}">Edit</a>
+          <form method="post" action="{{ url_for('invoices_delete', id=r.id) }}" onsubmit="return confirm('Delete invoice?')">
+            <button class="btn danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not rows %}<tr><td colspan="7" class="small">No invoices yet.</td></tr>{% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% if edit %}
+<div class="card">
+  <h2>Edit Invoice</h2>
+  <form method="post" action="{{ url_for('invoices_update', id=edit.id) }}" class="grid cols-3">
+    <label>No.<input class="input" name="number" value="{{ edit.number }}" required></label>
+    <label>Client<select name="client_id" class="select" required>
+      {% for c in clients %}<option value="{{ c.id }}" {% if edit.client_id==c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+    </select></label>
+    <label>Case<select name="case_id" class="select" required>
+      {% for c in cases %}<option value="{{ c.id }}" {% if edit.case_id==c.id %}selected{% endif %}>{{ c.ref }} — {{ c.title }}</option>{% endfor %}
+    </select></label>
+    <label>Status<select name="status_id" class="select" required>
+      {% for s in status %}<option value="{{ s.id }}" {% if edit.status_id==s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+    </select></label>
+    <label>Amount<input class="input" type="number" step="0.01" name="amount" value="{{ edit.amount }}"></label>
+    <label>Due Date<input class="input" type="date" name="due_date" value="{{ edit.due_date.strftime('%Y-%m-%d') if edit.due_date else '' }}"></label>
+    <div><button class="btn primary">Save</button></div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}
