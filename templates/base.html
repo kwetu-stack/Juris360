@@ -3,13 +3,17 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Juris360</title>
+    <title>Dashboard · Juris360</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
     <link rel="stylesheet" href="{{ url_for('static', filename='kwetu.css') }}">
   </head>
   <body>
-    <div class="topbar">
-      <div class="brand">KWETU · Juris360</div>
-      <nav>
+    <header class="topbar">
+      <div class="brandwrap">
+        <div class="logo-bubble">J</div>
+        <div class="brand">KWETU · Juris360</div>
+      </div>
+      <nav class="primary-nav">
         <a href="{{ url_for('dashboard') }}" class="{{ 'active' if active=='dashboard' else '' }}">Dashboard</a>
         <a href="{{ url_for('clients') }}" class="{{ 'active' if active=='clients' else '' }}">Clients</a>
         <a href="{{ url_for('lookups') }}" class="{{ 'active' if active=='lookups' else '' }}">Lookups</a>
@@ -17,9 +21,12 @@
         <a href="{{ url_for('hearings') }}" class="{{ 'active' if active=='hearings' else '' }}">Hearings</a>
         <a href="{{ url_for('invoices') }}" class="{{ 'active' if active=='invoices' else '' }}">Invoices</a>
       </nav>
-      <div style="margin-left:auto"></div>
-    </div>
-    <div class="container">
+      <div class="topbar-right">
+        <!-- Right side reserved for future profile/user menu -->
+      </div>
+    </header>
+
+    <main class="container">
       {% with messages = get_flashed_messages() %}
         {% if messages %}
           <div class="card" style="border-left:4px solid var(--accent)">
@@ -28,7 +35,7 @@
         {% endif %}
       {% endwith %}
       {% block content %}{% endblock %}
-      <div class="footer">Powered by Kwetu Partners Ltd • Juris360</div>
-    </div>
+      <footer class="footer">Powered by Kwetu Partners Ltd • Juris360</footer>
+    </main>
   </body>
 </html>
