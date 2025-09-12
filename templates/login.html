@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width:420px;margin:48px auto">
+  <h1>Sign in</h1>
+  <form method="post" style="display:grid;gap:12px;margin-top:12px">
+    <label>Username
+      <input class="input" name="username" autocomplete="username" required>
+    </label>
+    <label>Password
+      <input class="input" name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button class="btn primary">Sign in</button>
+  </form>
+  <p class="small" style="margin-top:8px;color:var(--muted)">
+    Default: admin / kwetutech00
+  </p>
+</div>
+{% endblock %}
