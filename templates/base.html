@@ -1,56 +1,65 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>{% block title %}Juris360{% endblock %}</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+
   <link rel="stylesheet" href="{{ url_for('static', filename='kwetu.css') }}">
-  {% block head %}{% endblock %}
+  <!-- Optional: cache-bust if Render is sticky -->
+  <!-- <link rel="stylesheet" href="{{ url_for('static', filename='kwetu.css', v=4) }}"> -->
+
+  <!-- Safety net so nav links don’t appear purple even if an older CSS is served -->
+  <style>
+    .topbar{display:flex;align-items:center;gap:20px;padding:14px 20px;background:var(--surface-1, #0f172a);position:sticky;top:0;z-index:10}
+    .brand a{color:var(--text,#e2e8f0);font-weight:700;text-decoration:none}
+    .menu{display:flex;gap:18px;flex-wrap:wrap}
+    .menu a{color:var(--text,#e2e8f0);opacity:.85;text-decoration:none;padding:8px 10px;border-radius:10px}
+    .menu a:hover{opacity:1;background:rgba(255,255,255,.06)}
+    .menu a.active{opacity:1;background:rgba(255,255,255,.10);font-weight:600}
+    .spacer{flex:1}
+    .container{max-width:1200px;margin:18px auto;padding:0 20px}
+    .flash{margin:10px 0;padding:10px 12px;border-radius:10px}
+    .flash.ok{background:#063; color:#d1fae5}
+    .flash.error{background:#5b1111; color:#ffe4e6}
+    footer{opacity:.7;text-align:center;margin:40px 0 10px}
+  </style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="container" style="display:flex;align-items:center;gap:16px;justify-content:space-between">
-      <div style="display:flex;align-items:center;gap:16px">
-        <div class="brand">KWETU • Juris360</div>
-        <nav class="nav">
-          <a href="{{ url_for('dashboard') }}" class="{% if active=='dashboard' %}active{% endif %}">Dashboard</a>
-          <a href="{{ url_for('clients') }}" class="{% if active=='clients' %}active{% endif %}">Clients</a>
-          <a href="{{ url_for('lookups') }}" class="{% if active=='lookups' %}active{% endif %}">Lookups</a>
-          <a href="{{ url_for('cases') }}" class="{% if active=='cases' %}active{% endif %}">Cases</a>
-          <a href="{{ url_for('hearings') }}" class="{% if active=='hearings' %}active{% endif %}">Hearings</a>
-          <a href="{{ url_for('invoices') }}" class="{% if active=='invoices' %}active{% endif %}">Invoices</a>
-        </nav>
-      </div>
 
-      <div>
-        {% if config.REQUIRE_LOGIN and session.get('user') %}
-          <form action="{{ url_for('logout') }}" method="post" style="display:inline">
-            <button class="btn ghost small" title="Logout">Logout</button>
-          </form>
-        {% elif config.REQUIRE_LOGIN %}
-          <a class="btn ghost small" href="{{ url_for('login') }}">Login</a>
-        {% endif %}
-      </div>
-    </div>
+  <header class="topbar">
+    <div class="brand"><a href="{{ url_for('dashboard') }}">KWETU • Juris360</a></div>
+
+    <nav class="menu">
+      <a href="{{ url_for('dashboard') }}" class="{% if active=='dashboard' %}active{% endif %}">Dashboard</a>
+      <a href="{{ url_for('clients') }}" class="{% if active=='clients' %}active{% endif %}">Clients</a>
+      <a href="{{ url_for('lookups') }}" class="{% if active=='lookups' %}active{% endif %}">Lookups</a>
+      <a href="{{ url_for('cases') }}" class="{% if active=='cases' %}active{% endif %}">Cases</a>
+      <a href="{{ url_for('hearings') }}" class="{% if active=='hearings' %}active{% endif %}">Hearings</a>
+      <a href="{{ url_for('invoices') }}" class="{% if active=='invoices' %}active{% endif %}">Invoices</a>
+    </nav>
+
+    <div class="spacer"></div>
+
+    {% if config.REQUIRE_LOGIN and session.get('user') %}
+    <form method="post" action="{{ url_for('logout') }}">
+      <button class="btn">Logout</button>
+    </form>
+    {% endif %}
   </header>
 
-  <main class="container" style="padding-top:24px">
-    {% with msgs = get_flashed_messages(with_categories=True) %}
-      {% if msgs %}
-        <div class="flash-stack">
-          {% for cat, msg in msgs %}
-            <div class="flash {{ cat }}">{{ msg }}</div>
-          {% endfor %}
-        </div>
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for cat,msg in messages %}
+          <div class="flash {{ cat }}">{{ msg }}</div>
+        {% endfor %}
       {% endif %}
     {% endwith %}
 
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="footer">
-    <div class="container small muted">Powered by Kwetu Partners Ltd • Juris360</div>
-  </footer>
+  <footer>Powered by Kwetu Partners Ltd • Juris360</footer>
 </body>
 </html>
