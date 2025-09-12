@@ -1,11 +1,13 @@
-# Juris360 v1 — fixed DB init (single SQLAlchemy instance, clean fallback)
+# Juris360 v1 — with Payments + Print/PDF for invoices (anchors/cards preserved)
 
 import os
 from datetime import datetime, date
+from decimal import Decimal
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import text, create_engine
+from sqlalchemy import text, create_engine, func
+import io
 
 load_dotenv()
 
@@ -28,7 +30,7 @@ def _resolve_db_uri():
         url = url.replace('postgresql://', 'postgresql+psycopg://', 1)
     return url
 
-# ---- Pick a working DB URL (test first) ----
+# ---- Pick a working DB URL (test first)
 candidate_uri = _resolve_db_uri()
 try:
     eng = create_engine(candidate_uri, pool_pre_ping=True, future=True)
@@ -41,7 +43,6 @@ except Exception:
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Single instance; bind once
 db = SQLAlchemy()
 db.init_app(app)
 
@@ -105,6 +106,18 @@ class Invoice(db.Model):
     client = db.relationship('Client', back_populates='invoices')
     case = db.relationship('Case', back_populates='invoices')
     status = db.relationship('CaseStatus', back_populates='invoices')
+    payments = db.relationship('Payment', back_populates='invoice',
+                               cascade='all, delete-orphan', lazy='dynamic')
+
+class Payment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey('invoice.id', ondelete='CASCADE'), nullable=False)
+    amount = db.Column(db.Numeric(12,2), nullable=False)
+    date = db.Column(db.Date, nullable=False, default=date.today)
+    method = db.Column(db.String(30))
+    reference = db.Column(db.String(80))
+    note = db.Column(db.Text)
+    invoice = db.relationship('Invoice', back_populates='payments')
 
 # ---------------- Seed ----------------
 def seed_if_empty():
@@ -134,8 +147,8 @@ def seed_if_empty():
     h2 = Hearing(case=c2, date=date.today(), status=open_s, notes='First hearing')
     db.session.add_all([h1, h2])
 
-    i1 = Invoice(number='INV-1001', client=alice, case=c1, status=pending, amount=15000, due_date=date.today())
-    i2 = Invoice(number='INV-1002', client=bob, case=c2, status=open_s, amount=22000, due_date=date.today())
+    i1 = Invoice(number='INV-1001', client=alice, case=c1, status=pending, amount=Decimal('15000.00'), due_date=date.today())
+    i2 = Invoice(number='INV-1002', client=bob, case=c2, status=open_s, amount=Decimal('22000.00'), due_date=date.today())
     db.session.add_all([i1, i2])
     db.session.commit()
 
@@ -149,6 +162,12 @@ def _metrics():
     pending_cases = Case.query.join(CaseStatus).filter(CaseStatus.name.in_(['Pending','Open'])).count()
     pending_invoices = Invoice.query.join(CaseStatus).filter(CaseStatus.name.in_(['Pending','Open'])).count()
     return {'clients': clients, 'pending_cases': pending_cases, 'pending_invoices': pending_invoices}
+
+def _invoice_paid_balance(inv: Invoice):
+    paid = db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(Payment.invoice_id == inv.id).scalar() or 0
+    paid = Decimal(paid)
+    total = Decimal(inv.amount or 0)
+    return paid, (total - paid)
 
 # ---------------- Routes ----------------
 @app.route('/')
@@ -333,7 +352,7 @@ def invoices():
         clients=Client.query.order_by(Client.name).all(),
         cases=Case.query.order_by(Case.id.desc()).all(),
         status=CaseStatus.query.order_by(CaseStatus.name).all(),
-        edit=None)
+        edit=None, payments=None, paid=None, balance=None)
 
 @app.route('/invoices/new', methods=['POST'])
 def invoices_create():
@@ -342,7 +361,7 @@ def invoices_create():
         client_id=int(request.form['client_id']),
         case_id=int(request.form['case_id']),
         status_id=int(request.form['status_id']),
-        amount=request.form.get('amount', 0),
+        amount=Decimal(request.form.get('amount') or 0),
         due_date=datetime.strptime(request.form['due_date'], '%Y-%m-%d').date() if request.form.get('due_date') else None
     )
     db.session.add(r); db.session.commit(); flash('Invoice created')
@@ -351,11 +370,14 @@ def invoices_create():
 @app.route('/invoices/<int:id>/edit')
 def invoices_edit(id):
     rows = Invoice.query.order_by(Invoice.id.desc()).all()
+    edit = Invoice.query.get_or_404(id)
+    pays = edit.payments.order_by(Payment.date.asc(), Payment.id.asc()).all()
+    paid, balance = _invoice_paid_balance(edit)
     return render_template('invoices.html', active='invoices', rows=rows,
         clients=Client.query.order_by(Client.name).all(),
         cases=Case.query.order_by(Case.id.desc()).all(),
         status=CaseStatus.query.order_by(CaseStatus.name).all(),
-        edit=Invoice.query.get_or_404(id))
+        edit=edit, payments=pays, paid=paid, balance=balance)
 
 @app.route('/invoices/<int:id>/update', methods=['POST'])
 def invoices_update(id):
@@ -364,15 +386,106 @@ def invoices_update(id):
     r.client_id=int(request.form['client_id'])
     r.case_id=int(request.form['case_id'])
     r.status_id=int(request.form['status_id'])
-    r.amount=request.form.get('amount', 0)
+    r.amount=Decimal(request.form.get('amount') or 0)
     r.due_date=datetime.strptime(request.form['due_date'], '%Y-%m-%d').date() if request.form.get('due_date') else None
     db.session.commit(); flash('Invoice updated')
-    return redirect(url_for('invoices'))
+    return redirect(url_for('invoices_edit', id=id))
 
 @app.route('/invoices/<int:id>/delete', methods=['POST'])
 def invoices_delete(id):
     r = Invoice.query.get_or_404(id); db.session.delete(r); db.session.commit(); flash('Invoice deleted')
     return redirect(url_for('invoices'))
+
+# ---- Print view
+@app.get('/invoices/<int:id>')
+def invoice_view(id):
+    inv = Invoice.query.get_or_404(id)
+    pays = inv.payments.order_by(Payment.date.asc(), Payment.id.asc()).all()
+    paid, balance = _invoice_paid_balance(inv)
+    return render_template('invoice_print.html', inv=inv, payments=pays, paid=paid, balance=balance)
+
+# ---- PDF download
+@app.get('/invoices/<int:id>/pdf')
+def invoice_pdf(id):
+    inv = Invoice.query.get_or_404(id)
+    pays = inv.payments.order_by(Payment.date.asc(), Payment.id.asc()).all()
+    paid, balance = _invoice_paid_balance(inv)
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+    except Exception:
+        flash("PDF generator not available. Use Print → Save as PDF.", "error")
+        return redirect(url_for('invoice_view', id=id))
+
+    mem = io.BytesIO()
+    c = canvas.Canvas(mem, pagesize=A4)
+    w, h = A4
+
+    y = h - 50
+    c.setFont("Helvetica-Bold", 16); c.drawString(40, y, f"Invoice {inv.number}")
+    c.setFont("Helvetica", 10); y -= 20
+    c.drawString(40, y, f"Client: {inv.client.name}")
+    y -= 14; c.drawString(40, y, f"Case: {inv.case.ref} — {inv.case.title}")
+    y -= 14; c.drawString(40, y, f"Status: {inv.status.name}")
+    y -= 14; c.drawString(40, y, f"Due: {inv.due_date.strftime('%Y-%m-%d') if inv.due_date else '—'}")
+    y -= 20; c.setFont("Helvetica-Bold", 12)
+    c.drawString(40, y, f"Total: {float(inv.amount):.2f}    Paid: {float(paid):.2f}    Balance: {float(balance):.2f}")
+
+    y -= 24; c.setFont("Helvetica-Bold", 11); c.drawString(40, y, "Payments")
+    y -= 16; c.setFont("Helvetica", 10)
+    if not pays:
+        c.drawString(40, y, "— None —"); y -= 14
+    else:
+        for p in pays:
+            c.drawString(40, y, p.date.strftime("%Y-%m-%d"))
+            c.drawString(140, y, (p.method or "—"))
+            c.drawString(240, y, (p.reference or ""))
+            c.drawRightString(w-40, y, f"{float(p.amount):.2f}")
+            y -= 14
+            if y < 60:
+                c.showPage(); y = h - 50; c.setFont("Helvetica", 10)
+
+    c.showPage(); c.save(); mem.seek(0)
+    return send_file(mem, as_attachment=True, download_name=f"invoice-{inv.number}.pdf",
+                     mimetype="application/pdf")
+
+# ---- Record payment
+@app.post('/invoices/<int:id>/payments/add')
+def invoice_payment_add(id):
+    inv = Invoice.query.get_or_404(id)
+    amt_str = (request.form.get('amount') or '').strip()
+    try:
+        amount = Decimal(amt_str)
+    except Exception:
+        flash('Invalid amount', 'error'); return redirect(url_for('invoices_edit', id=id))
+    if amount <= 0:
+        flash('Amount must be greater than zero', 'error'); return redirect(url_for('invoices_edit', id=id))
+
+    date_str = request.form.get('date')
+    try:
+        pay_date = datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else date.today()
+    except Exception:
+        pay_date = date.today()
+
+    p = Payment(invoice_id=inv.id,
+                amount=amount,
+                date=pay_date,
+                method=request.form.get('method'),
+                reference=request.form.get('reference'),
+                note=request.form.get('note'))
+    db.session.add(p)
+
+    # Auto-close when fully paid
+    paid, balance = _invoice_paid_balance(inv)
+    if (Decimal(inv.amount or 0) - paid - amount) <= 0:
+        closed = CaseStatus.query.filter_by(name='Closed').first()
+        if closed:
+            inv.status = closed
+
+    db.session.commit()
+    flash('Payment recorded', 'ok')
+    return redirect(url_for('invoices_edit', id=id))
 
 if __name__ == '__main__':
     app.run(debug=True)
