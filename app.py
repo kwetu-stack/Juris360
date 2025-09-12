@@ -1,10 +1,13 @@
-# Juris360 v1 — with Payments + Print/PDF for invoices (anchors/cards preserved)
+# Juris360 v1 — Payments + Print/PDF + Login (anchors/cards preserved)
 
 import os
 from datetime import datetime, date
 from decimal import Decimal
+from functools import wraps
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask import (
+    Flask, render_template, request, redirect, url_for, flash, send_file, session
+)
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text, create_engine, func
 import io
@@ -13,6 +16,18 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-juris360')
+
+# ---- Login config
+# Uses your requested credentials by default; can be overridden via env if needed
+# ---- Login config (accept both APP_* and ADMIN_*; toggle via REQUIRE_LOGIN/ENABLE_AUTH)
+app.config['APP_USER'] = os.getenv('APP_USER') or os.getenv('ADMIN_USER', 'admin')
+app.config['APP_PASSWORD'] = os.getenv('APP_PASSWORD') or os.getenv('ADMIN_PASS', 'kwetutech00')
+
+def _truthy(v: str | None) -> bool:
+    return str(v).lower() in {'1','true','yes','on'}
+
+app.config['REQUIRE_LOGIN'] = _truthy(os.getenv('REQUIRE_LOGIN', os.getenv('ENABLE_AUTH', '1')))
+
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -45,6 +60,40 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy()
 db.init_app(app)
+
+# ---------------- Auth helpers ----------------
+def login_required(fn):
+    @wraps(fn)
+    def _wrap(*args, **kwargs):
+        if not app.config.get('REQUIRE_LOGIN'):
+            return fn(*args, **kwargs)
+        if session.get('user'):
+            return fn(*args, **kwargs)
+        return redirect(url_for('login', next=request.path))
+    return _wrap
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if session.get('user'):
+        return redirect(url_for('dashboard'))
+    if request.method == 'POST':
+        u = request.form.get('username', '').strip()
+        p = request.form.get('password', '')
+        if (u == app.config['APP_USER']) and (p == app.config['APP_PASSWORD']):
+            session['user'] = {'name': u}
+            return redirect(request.args.get('next') or url_for('dashboard'))
+        flash('Invalid username or password', 'error')
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+@app.context_processor
+def inject_globals():
+    # lets templates know if login is required and the current user
+    return dict(config=app.config, session=session)
 
 # ---------------- Models ----------------
 class Client(db.Model):
@@ -171,17 +220,20 @@ def _invoice_paid_balance(inv: Invoice):
 
 # ---------------- Routes ----------------
 @app.route('/')
+@login_required
 def dashboard():
     recent = Case.query.order_by(Case.id.desc()).limit(5).all()
     return render_template('dashboard.html', active='dashboard', metrics=_metrics(), recent_cases=recent)
 
 # ---- Clients CRUD ----
 @app.route('/clients')
+@login_required
 def clients():
     rows = Client.query.order_by(Client.name.asc()).all()
     return render_template('clients.html', active='clients', rows=rows, edit=None)
 
 @app.route('/clients/new', methods=['POST'])
+@login_required
 def clients_create():
     r = Client(name=request.form['name'], phone=request.form.get('phone'), email=request.form.get('email'), address=request.form.get('address'))
     db.session.add(r); db.session.commit()
@@ -189,12 +241,14 @@ def clients_create():
     return redirect(url_for('clients'))
 
 @app.route('/clients/<int:id>/edit')
+@login_required
 def clients_edit(id):
     rows = Client.query.order_by(Client.name.asc()).all()
     edit = Client.query.get_or_404(id)
     return render_template('clients.html', active='clients', rows=rows, edit=edit)
 
 @app.route('/clients/<int:id>/update', methods=['POST'])
+@login_required
 def clients_update(id):
     r = Client.query.get_or_404(id)
     r.name = request.form['name']; r.phone = request.form.get('phone'); r.email = request.form.get('email'); r.address = request.form.get('address')
@@ -202,12 +256,14 @@ def clients_update(id):
     return redirect(url_for('clients'))
 
 @app.route('/clients/<int:id>/delete', methods=['POST'])
+@login_required
 def clients_delete(id):
     r = Client.query.get_or_404(id); db.session.delete(r); db.session.commit(); flash('Client deleted')
     return redirect(url_for('clients'))
 
 # ---- Lookups ----
 @app.route('/lookups')
+@login_required
 def lookups():
     return render_template('lookups.html', active='lookups',
         case_types=CaseType.query.order_by(CaseType.name).all(),
@@ -215,11 +271,13 @@ def lookups():
         edit=None, edit_entity=None)
 
 @app.route('/lookups/case-types/new', methods=['POST'])
+@login_required
 def case_types_create():
     db.session.add(CaseType(name=request.form['name'])); db.session.commit(); flash('Case type added')
     return redirect(url_for('lookups'))
 
 @app.route('/lookups/case-types/<int:id>/edit')
+@login_required
 def case_types_edit(id):
     return render_template('lookups.html', active='lookups',
         case_types=CaseType.query.order_by(CaseType.name).all(),
@@ -227,21 +285,25 @@ def case_types_edit(id):
         edit=CaseType.query.get_or_404(id), edit_entity='type')
 
 @app.route('/lookups/case-types/<int:id>/update', methods=['POST'])
+@login_required
 def case_types_update(id):
     r = CaseType.query.get_or_404(id); r.name = request.form['name']; db.session.commit(); flash('Case type updated')
     return redirect(url_for('lookups'))
 
 @app.route('/lookups/case-types/<int:id>/delete', methods=['POST'])
+@login_required
 def case_types_delete(id):
     r = CaseType.query.get_or_404(id); db.session.delete(r); db.session.commit(); flash('Case type deleted')
     return redirect(url_for('lookups'))
 
 @app.route('/lookups/case-status/new', methods=['POST'])
+@login_required
 def case_status_create():
     db.session.add(CaseStatus(name=request.form['name'])); db.session.commit(); flash('Case status added')
     return redirect(url_for('lookups'))
 
 @app.route('/lookups/case-status/<int:id>/edit')
+@login_required
 def case_status_edit(id):
     return render_template('lookups.html', active='lookups',
         case_types=CaseType.query.order_by(CaseType.name).all(),
@@ -249,17 +311,20 @@ def case_status_edit(id):
         edit=CaseStatus.query.get_or_404(id), edit_entity='status')
 
 @app.route('/lookups/case-status/<int:id>/update', methods=['POST'])
+@login_required
 def case_status_update(id):
     r = CaseStatus.query.get_or_404(id); r.name = request.form['name']; db.session.commit(); flash('Case status updated')
     return redirect(url_for('lookups'))
 
 @app.route('/lookups/case-status/<int:id>/delete', methods=['POST'])
+@login_required
 def case_status_delete(id):
     r = CaseStatus.query.get_or_404(id); db.session.delete(r); db.session.commit(); flash('Case status deleted')
     return redirect(url_for('lookups'))
 
 # ---- Cases ----
 @app.route('/cases')
+@login_required
 def cases():
     rows = Case.query.order_by(Case.id.desc()).all()
     return render_template('cases.html', active='cases', rows=rows,
@@ -269,6 +334,7 @@ def cases():
         edit=None)
 
 @app.route('/cases/new', methods=['POST'])
+@login_required
 def cases_create():
     r = Case(
         ref=request.form['ref'], title=request.form['title'],
@@ -280,6 +346,7 @@ def cases_create():
     return redirect(url_for('cases'))
 
 @app.route('/cases/<int:id>/edit')
+@login_required
 def cases_edit(id):
     rows = Case.query.order_by(Case.id.desc()).all()
     return render_template('cases.html', active='cases', rows=rows,
@@ -289,6 +356,7 @@ def cases_edit(id):
         edit=Case.query.get_or_404(id))
 
 @app.route('/cases/<int:id>/update', methods=['POST'])
+@login_required
 def cases_update(id):
     r = Case.query.get_or_404(id)
     r.ref=request.form['ref']; r.title=request.form['title']
@@ -297,12 +365,14 @@ def cases_update(id):
     return redirect(url_for('cases'))
 
 @app.route('/cases/<int:id>/delete', methods=['POST'])
+@login_required
 def cases_delete(id):
     r = Case.query.get_or_404(id); db.session.delete(r); db.session.commit(); flash('Case deleted')
     return redirect(url_for('cases'))
 
 # ---- Hearings ----
 @app.route('/hearings')
+@login_required
 def hearings():
     rows = Hearing.query.order_by(Hearing.date.desc()).all()
     return render_template('hearings.html', active='hearings', rows=rows,
@@ -311,6 +381,7 @@ def hearings():
         edit=None)
 
 @app.route('/hearings/new', methods=['POST'])
+@login_required
 def hearings_create():
     r = Hearing(
         case_id=int(request.form['case_id']),
@@ -322,6 +393,7 @@ def hearings_create():
     return redirect(url_for('hearings'))
 
 @app.route('/hearings/<int:id>/edit')
+@login_required
 def hearings_edit(id):
     rows = Hearing.query.order_by(Hearing.date.desc()).all()
     return render_template('hearings.html', active='hearings', rows=rows,
@@ -330,6 +402,7 @@ def hearings_edit(id):
         edit=Hearing.query.get_or_404(id))
 
 @app.route('/hearings/<int:id>/update', methods=['POST'])
+@login_required
 def hearings_update(id):
     r = Hearing.query.get_or_404(id)
     r.case_id=int(request.form['case_id'])
@@ -340,12 +413,14 @@ def hearings_update(id):
     return redirect(url_for('hearings'))
 
 @app.route('/hearings/<int:id>/delete', methods=['POST'])
+@login_required
 def hearings_delete(id):
     r = Hearing.query.get_or_404(id); db.session.delete(r); db.session.commit(); flash('Hearing deleted')
     return redirect(url_for('hearings'))
 
 # ---- Invoices ----
 @app.route('/invoices')
+@login_required
 def invoices():
     rows = Invoice.query.order_by(Invoice.id.desc()).all()
     return render_template('invoices.html', active='invoices', rows=rows,
@@ -355,6 +430,7 @@ def invoices():
         edit=None, payments=None, paid=None, balance=None)
 
 @app.route('/invoices/new', methods=['POST'])
+@login_required
 def invoices_create():
     r = Invoice(
         number=request.form['number'],
@@ -368,6 +444,7 @@ def invoices_create():
     return redirect(url_for('invoices'))
 
 @app.route('/invoices/<int:id>/edit')
+@login_required
 def invoices_edit(id):
     rows = Invoice.query.order_by(Invoice.id.desc()).all()
     edit = Invoice.query.get_or_404(id)
@@ -380,6 +457,7 @@ def invoices_edit(id):
         edit=edit, payments=pays, paid=paid, balance=balance)
 
 @app.route('/invoices/<int:id>/update', methods=['POST'])
+@login_required
 def invoices_update(id):
     r = Invoice.query.get_or_404(id)
     r.number=request.form['number']
@@ -392,12 +470,14 @@ def invoices_update(id):
     return redirect(url_for('invoices_edit', id=id))
 
 @app.route('/invoices/<int:id>/delete', methods=['POST'])
+@login_required
 def invoices_delete(id):
     r = Invoice.query.get_or_404(id); db.session.delete(r); db.session.commit(); flash('Invoice deleted')
     return redirect(url_for('invoices'))
 
 # ---- Print view
 @app.get('/invoices/<int:id>')
+@login_required
 def invoice_view(id):
     inv = Invoice.query.get_or_404(id)
     pays = inv.payments.order_by(Payment.date.asc(), Payment.id.asc()).all()
@@ -406,6 +486,7 @@ def invoice_view(id):
 
 # ---- PDF download
 @app.get('/invoices/<int:id>/pdf')
+@login_required
 def invoice_pdf(id):
     inv = Invoice.query.get_or_404(id)
     pays = inv.payments.order_by(Payment.date.asc(), Payment.id.asc()).all()
@@ -452,6 +533,7 @@ def invoice_pdf(id):
 
 # ---- Record payment
 @app.post('/invoices/<int:id>/payments/add')
+@login_required
 def invoice_payment_add(id):
     inv = Invoice.query.get_or_404(id)
     amt_str = (request.form.get('amount') or '').strip()
