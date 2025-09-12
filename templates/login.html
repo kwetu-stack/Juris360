@@ -1,18 +1,23 @@
 {% extends "base.html" %}
+{% block title %}Sign in · Juris360{% endblock %}
+
 {% block content %}
-<div class="card" style="max-width:420px;margin:48px auto">
+<div class="card" style="max-width:520px;margin:40px auto;">
   <h1>Sign in</h1>
-  <form method="post" style="display:grid;gap:12px;margin-top:12px">
+
+  <form method="post" action="{{ url_for('login') }}" class="grid cols-1" style="gap:14px;">
     <label>Username
-      <input class="input" name="username" autocomplete="username" required>
+      <input class="input" name="username" autocomplete="username"
+             value="{{ request.form.get('username','') }}" required>
     </label>
+
     <label>Password
-      <input class="input" name="password" type="password" autocomplete="current-password" required>
+      <input class="input" type="password" name="password" autocomplete="current-password" required>
     </label>
-    <button class="btn primary">Sign in</button>
+
+    <div>
+      <button class="btn primary" type="submit">Sign in</button>
+    </div>
   </form>
-  <p class="small" style="margin-top:8px;color:var(--muted)">
-    Default: admin / kwetutech00
-  </p>
 </div>
 {% endblock %}
