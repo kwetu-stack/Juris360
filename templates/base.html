@@ -1,41 +1,56 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Dashboard · Juris360</title>
-    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
-    <link rel="stylesheet" href="{{ url_for('static', filename='kwetu.css') }}">
-  </head>
-  <body>
-    <header class="topbar">
-      <div class="brandwrap">
-        <div class="logo-bubble">J</div>
-        <div class="brand">KWETU · Juris360</div>
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Juris360{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='kwetu.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header class="topbar">
+    <div class="container" style="display:flex;align-items:center;gap:16px;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:16px">
+        <div class="brand">KWETU • Juris360</div>
+        <nav class="nav">
+          <a href="{{ url_for('dashboard') }}" class="{% if active=='dashboard' %}active{% endif %}">Dashboard</a>
+          <a href="{{ url_for('clients') }}" class="{% if active=='clients' %}active{% endif %}">Clients</a>
+          <a href="{{ url_for('lookups') }}" class="{% if active=='lookups' %}active{% endif %}">Lookups</a>
+          <a href="{{ url_for('cases') }}" class="{% if active=='cases' %}active{% endif %}">Cases</a>
+          <a href="{{ url_for('hearings') }}" class="{% if active=='hearings' %}active{% endif %}">Hearings</a>
+          <a href="{{ url_for('invoices') }}" class="{% if active=='invoices' %}active{% endif %}">Invoices</a>
+        </nav>
       </div>
-      <nav class="primary-nav">
-        <a href="{{ url_for('dashboard') }}" class="{{ 'active' if active=='dashboard' else '' }}">Dashboard</a>
-        <a href="{{ url_for('clients') }}" class="{{ 'active' if active=='clients' else '' }}">Clients</a>
-        <a href="{{ url_for('lookups') }}" class="{{ 'active' if active=='lookups' else '' }}">Lookups</a>
-        <a href="{{ url_for('cases') }}" class="{{ 'active' if active=='cases' else '' }}">Cases</a>
-        <a href="{{ url_for('hearings') }}" class="{{ 'active' if active=='hearings' else '' }}">Hearings</a>
-        <a href="{{ url_for('invoices') }}" class="{{ 'active' if active=='invoices' else '' }}">Invoices</a>
-      </nav>
-      <div class="topbar-right">
-        <!-- Right side reserved for future profile/user menu -->
-      </div>
-    </header>
 
-    <main class="container">
-      {% with messages = get_flashed_messages() %}
-        {% if messages %}
-          <div class="card" style="border-left:4px solid var(--accent)">
-            {% for m in messages %}<div>{{ m }}</div>{% endfor %}
-          </div>
+      <div>
+        {% if config.REQUIRE_LOGIN and session.get('user') %}
+          <form action="{{ url_for('logout') }}" method="post" style="display:inline">
+            <button class="btn ghost small" title="Logout">Logout</button>
+          </form>
+        {% elif config.REQUIRE_LOGIN %}
+          <a class="btn ghost small" href="{{ url_for('login') }}">Login</a>
         {% endif %}
-      {% endwith %}
-      {% block content %}{% endblock %}
-      <footer class="footer">Powered by Kwetu Partners Ltd • Juris360</footer>
-    </main>
-  </body>
+      </div>
+    </div>
+  </header>
+
+  <main class="container" style="padding-top:24px">
+    {% with msgs = get_flashed_messages(with_categories=True) %}
+      {% if msgs %}
+        <div class="flash-stack">
+          {% for cat, msg in msgs %}
+            <div class="flash {{ cat }}">{{ msg }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <div class="container small muted">Powered by Kwetu Partners Ltd • Juris360</div>
+  </footer>
+</body>
 </html>

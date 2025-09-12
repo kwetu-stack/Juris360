@@ -1,34 +1,30 @@
-# Juris360 v1 — Payments + Print/PDF + Login (anchors/cards preserved)
-
-import os
+# Juris360 — Auth (login/logout), Payments & Print/PDF, env-compatible
+import os, io
 from datetime import datetime, date
 from decimal import Decimal
 from functools import wraps
+
 from dotenv import load_dotenv
 from flask import (
-    Flask, render_template, request, redirect, url_for, flash, send_file, session
+    Flask, render_template, request, redirect, url_for,
+    flash, send_file, session
 )
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text, create_engine, func
-import io
 
 load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-juris360')
 
-# ---- Login config
-# Uses your requested credentials by default; can be overridden via env if needed
-# ---- Login config (accept both APP_* and ADMIN_*; toggle via REQUIRE_LOGIN/ENABLE_AUTH)
+# ---- Auth config (supports both APP_* and ADMIN_* names) ----
 app.config['APP_USER'] = os.getenv('APP_USER') or os.getenv('ADMIN_USER', 'admin')
 app.config['APP_PASSWORD'] = os.getenv('APP_PASSWORD') or os.getenv('ADMIN_PASS', 'kwetutech00')
 
-def _truthy(v: str | None) -> bool:
-    return str(v).lower() in {'1','true','yes','on'}
-
+def _truthy(v): return str(v).lower() in {'1', 'true', 'yes', 'on'}
 app.config['REQUIRE_LOGIN'] = _truthy(os.getenv('REQUIRE_LOGIN', os.getenv('ENABLE_AUTH', '1')))
 
-
+# ---- DB setup (Postgres or SQLite fallback) ----
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -36,39 +32,33 @@ def _sqlite_uri():
     return 'sqlite:///' + os.path.join(DATA_DIR, 'juris360.db')
 
 def _resolve_db_uri():
-    url = os.getenv('DATABASE_URL', '').strip()
-    if not url:
-        return _sqlite_uri()
+    url = (os.getenv('DATABASE_URL') or os.getenv('DATABASE_URI') or '').strip()
+    if not url: return _sqlite_uri()
     if url.startswith('postgres://'):
         url = url.replace('postgres://', 'postgresql+psycopg://', 1)
     elif url.startswith('postgresql://') and '+psycopg' not in url:
         url = url.replace('postgresql://', 'postgresql+psycopg://', 1)
     return url
 
-# ---- Pick a working DB URL (test first)
 candidate_uri = _resolve_db_uri()
 try:
     eng = create_engine(candidate_uri, pool_pre_ping=True, future=True)
-    with eng.connect() as conn:
-        conn.execute(text('SELECT 1'))
+    with eng.connect() as c: c.execute(text('SELECT 1'))
     db_uri = candidate_uri
 except Exception:
     db_uri = _sqlite_uri()
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db = SQLAlchemy()
 db.init_app(app)
 
-# ---------------- Auth helpers ----------------
-def login_required(fn):
-    @wraps(fn)
-    def _wrap(*args, **kwargs):
-        if not app.config.get('REQUIRE_LOGIN'):
-            return fn(*args, **kwargs)
-        if session.get('user'):
-            return fn(*args, **kwargs)
+# ------------- Auth helpers -------------
+def login_required(view):
+    @wraps(view)
+    def _wrap(*a, **kw):
+        if not app.config['REQUIRE_LOGIN'] or session.get('user'):
+            return view(*a, **kw)
         return redirect(url_for('login', next=request.path))
     return _wrap
 
@@ -77,25 +67,25 @@ def login():
     if session.get('user'):
         return redirect(url_for('dashboard'))
     if request.method == 'POST':
-        u = request.form.get('username', '').strip()
-        p = request.form.get('password', '')
-        if (u == app.config['APP_USER']) and (p == app.config['APP_PASSWORD']):
+        u = request.form.get('username','').strip()
+        p = request.form.get('password','')
+        if u == app.config['APP_USER'] and p == app.config['APP_PASSWORD']:
             session['user'] = {'name': u}
             return redirect(request.args.get('next') or url_for('dashboard'))
         flash('Invalid username or password', 'error')
     return render_template('login.html')
 
-@app.route('/logout')
+@app.route('/logout', methods=['GET', 'POST'])
 def logout():
     session.clear()
+    flash('Signed out', 'ok')
     return redirect(url_for('login'))
 
 @app.context_processor
 def inject_globals():
-    # lets templates know if login is required and the current user
     return dict(config=app.config, session=session)
 
-# ---------------- Models ----------------
+# ------------- Models -------------
 class Client(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
@@ -168,10 +158,9 @@ class Payment(db.Model):
     note = db.Column(db.Text)
     invoice = db.relationship('Invoice', back_populates='payments')
 
-# ---------------- Seed ----------------
+# ------------- Seed data -------------
 def seed_if_empty():
-    if Client.query.first():
-        return
+    if Client.query.first(): return
     pending = CaseStatus(name='Pending')
     open_s = CaseStatus(name='Open')
     closed = CaseStatus(name='Closed')
@@ -184,28 +173,26 @@ def seed_if_empty():
 
     alice = Client(name='Alice Wanjiku', phone='+254700000001', email='alice@example.com', address='Nairobi')
     bob = Client(name='Bob Otieno', phone='+254700000002', email='bob@example.com', address='Mombasa')
-    db.session.add_all([alice, bob])
-    db.session.flush()
+    db.session.add_all([alice, bob]); db.session.flush()
 
     c1 = Case(ref='C-001', title='Contract Dispute', client=alice, case_type=commercial, status=pending)
     c2 = Case(ref='C-002', title='Property Claim', client=bob, case_type=civil, status=open_s)
-    db.session.add_all([c1, c2])
-    db.session.flush()
+    db.session.add_all([c1, c2]); db.session.flush()
 
     h1 = Hearing(case=c1, date=date.today(), status=pending, notes='Mention')
     h2 = Hearing(case=c2, date=date.today(), status=open_s, notes='First hearing')
     db.session.add_all([h1, h2])
 
-    i1 = Invoice(number='INV-1001', client=alice, case=c1, status=pending, amount=Decimal('15000.00'), due_date=date.today())
-    i2 = Invoice(number='INV-1002', client=bob, case=c2, status=open_s, amount=Decimal('22000.00'), due_date=date.today())
-    db.session.add_all([i1, i2])
-    db.session.commit()
+    from decimal import Decimal as D
+    i1 = Invoice(number='INV-1001', client=alice, case=c1, status=pending, amount=D('15000.00'), due_date=date.today())
+    i2 = Invoice(number='INV-1002', client=bob, case=c2, status=open_s, amount=D('22000.00'), due_date=date.today())
+    db.session.add_all([i1, i2]); db.session.commit()
 
 with app.app_context():
     db.create_all()
     seed_if_empty()
 
-# ---------------- Helpers ----------------
+# ------------- Helpers -------------
 def _metrics():
     clients = Client.query.count()
     pending_cases = Case.query.join(CaseStatus).filter(CaseStatus.name.in_(['Pending','Open'])).count()
@@ -218,14 +205,14 @@ def _invoice_paid_balance(inv: Invoice):
     total = Decimal(inv.amount or 0)
     return paid, (total - paid)
 
-# ---------------- Routes ----------------
+# ------------- Routes -------------
 @app.route('/')
 @login_required
 def dashboard():
     recent = Case.query.order_by(Case.id.desc()).limit(5).all()
     return render_template('dashboard.html', active='dashboard', metrics=_metrics(), recent_cases=recent)
 
-# ---- Clients CRUD ----
+# Clients
 @app.route('/clients')
 @login_required
 def clients():
@@ -235,9 +222,9 @@ def clients():
 @app.route('/clients/new', methods=['POST'])
 @login_required
 def clients_create():
-    r = Client(name=request.form['name'], phone=request.form.get('phone'), email=request.form.get('email'), address=request.form.get('address'))
-    db.session.add(r); db.session.commit()
-    flash('Client created')
+    r = Client(name=request.form['name'], phone=request.form.get('phone'),
+               email=request.form.get('email'), address=request.form.get('address'))
+    db.session.add(r); db.session.commit(); flash('Client created')
     return redirect(url_for('clients'))
 
 @app.route('/clients/<int:id>/edit')
@@ -251,17 +238,17 @@ def clients_edit(id):
 @login_required
 def clients_update(id):
     r = Client.query.get_or_404(id)
-    r.name = request.form['name']; r.phone = request.form.get('phone'); r.email = request.form.get('email'); r.address = request.form.get('address')
-    db.session.commit(); flash('Client updated')
-    return redirect(url_for('clients'))
+    r.name = request.form['name']; r.phone = request.form.get('phone')
+    r.email = request.form.get('email'); r.address = request.form.get('address')
+    db.session.commit(); flash('Client updated'); return redirect(url_for('clients'))
 
 @app.route('/clients/<int:id>/delete', methods=['POST'])
 @login_required
 def clients_delete(id):
-    r = Client.query.get_or_404(id); db.session.delete(r); db.session.commit(); flash('Client deleted')
-    return redirect(url_for('clients'))
+    r = Client.query.get_or_404(id); db.session.delete(r)
+    db.session.commit(); flash('Client deleted'); return redirect(url_for('clients'))
 
-# ---- Lookups ----
+# Lookups
 @app.route('/lookups')
 @login_required
 def lookups():
@@ -273,8 +260,8 @@ def lookups():
 @app.route('/lookups/case-types/new', methods=['POST'])
 @login_required
 def case_types_create():
-    db.session.add(CaseType(name=request.form['name'])); db.session.commit(); flash('Case type added')
-    return redirect(url_for('lookups'))
+    db.session.add(CaseType(name=request.form['name'])); db.session.commit()
+    flash('Case type added'); return redirect(url_for('lookups'))
 
 @app.route('/lookups/case-types/<int:id>/edit')
 @login_required
@@ -287,20 +274,20 @@ def case_types_edit(id):
 @app.route('/lookups/case-types/<int:id>/update', methods=['POST'])
 @login_required
 def case_types_update(id):
-    r = CaseType.query.get_or_404(id); r.name = request.form['name']; db.session.commit(); flash('Case type updated')
-    return redirect(url_for('lookups'))
+    r = CaseType.query.get_or_404(id); r.name = request.form['name']
+    db.session.commit(); flash('Case type updated'); return redirect(url_for('lookups'))
 
 @app.route('/lookups/case-types/<int:id>/delete', methods=['POST'])
 @login_required
 def case_types_delete(id):
-    r = CaseType.query.get_or_404(id); db.session.delete(r); db.session.commit(); flash('Case type deleted')
-    return redirect(url_for('lookups'))
+    r = CaseType.query.get_or_404(id); db.session.delete(r)
+    db.session.commit(); flash('Case type deleted'); return redirect(url_for('lookups'))
 
 @app.route('/lookups/case-status/new', methods=['POST'])
 @login_required
 def case_status_create():
-    db.session.add(CaseStatus(name=request.form['name'])); db.session.commit(); flash('Case status added')
-    return redirect(url_for('lookups'))
+    db.session.add(CaseStatus(name=request.form['name'])); db.session.commit()
+    flash('Case status added'); return redirect(url_for('lookups'))
 
 @app.route('/lookups/case-status/<int:id>/edit')
 @login_required
@@ -313,16 +300,16 @@ def case_status_edit(id):
 @app.route('/lookups/case-status/<int:id>/update', methods=['POST'])
 @login_required
 def case_status_update(id):
-    r = CaseStatus.query.get_or_404(id); r.name = request.form['name']; db.session.commit(); flash('Case status updated')
-    return redirect(url_for('lookups'))
+    r = CaseStatus.query.get_or_404(id); r.name = request.form['name']
+    db.session.commit(); flash('Case status updated'); return redirect(url_for('lookups'))
 
 @app.route('/lookups/case-status/<int:id>/delete', methods=['POST'])
 @login_required
 def case_status_delete(id):
-    r = CaseStatus.query.get_or_404(id); db.session.delete(r); db.session.commit(); flash('Case status deleted')
-    return redirect(url_for('lookups'))
+    r = CaseStatus.query.get_or_404(id); db.session.delete(r)
+    db.session.commit(); flash('Case status deleted'); return redirect(url_for('lookups'))
 
-# ---- Cases ----
+# Cases
 @app.route('/cases')
 @login_required
 def cases():
@@ -336,12 +323,10 @@ def cases():
 @app.route('/cases/new', methods=['POST'])
 @login_required
 def cases_create():
-    r = Case(
-        ref=request.form['ref'], title=request.form['title'],
-        client_id=int(request.form['client_id']),
-        case_type_id=int(request.form['case_type_id']),
-        status_id=int(request.form['status_id'])
-    )
+    r = Case(ref=request.form['ref'], title=request.form['title'],
+             client_id=int(request.form['client_id']),
+             case_type_id=int(request.form['case_type_id']),
+             status_id=int(request.form['status_id']))
     db.session.add(r); db.session.commit(); flash('Case created')
     return redirect(url_for('cases'))
 
@@ -359,18 +344,19 @@ def cases_edit(id):
 @login_required
 def cases_update(id):
     r = Case.query.get_or_404(id)
-    r.ref=request.form['ref']; r.title=request.form['title']
-    r.client_id=int(request.form['client_id']); r.case_type_id=int(request.form['case_type_id']); r.status_id=int(request.form['status_id'])
-    db.session.commit(); flash('Case updated')
-    return redirect(url_for('cases'))
+    r.ref = request.form['ref']; r.title = request.form['title']
+    r.client_id = int(request.form['client_id'])
+    r.case_type_id = int(request.form['case_type_id'])
+    r.status_id = int(request.form['status_id'])
+    db.session.commit(); flash('Case updated'); return redirect(url_for('cases'))
 
 @app.route('/cases/<int:id>/delete', methods=['POST'])
 @login_required
 def cases_delete(id):
-    r = Case.query.get_or_404(id); db.session.delete(r); db.session.commit(); flash('Case deleted')
-    return redirect(url_for('cases'))
+    r = Case.query.get_or_404(id); db.session.delete(r)
+    db.session.commit(); flash('Case deleted'); return redirect(url_for('cases'))
 
-# ---- Hearings ----
+# Hearings
 @app.route('/hearings')
 @login_required
 def hearings():
@@ -405,20 +391,20 @@ def hearings_edit(id):
 @login_required
 def hearings_update(id):
     r = Hearing.query.get_or_404(id)
-    r.case_id=int(request.form['case_id'])
-    r.date=datetime.strptime(request.form['date'], '%Y-%m-%d').date()
-    r.status_id=int(request.form['status_id'])
-    r.notes=request.form.get('notes')
+    r.case_id = int(request.form['case_id'])
+    r.date = datetime.strptime(request.form['date'], '%Y-%m-%d').date()
+    r.status_id = int(request.form['status_id'])
+    r.notes = request.form.get('notes')
     db.session.commit(); flash('Hearing updated')
     return redirect(url_for('hearings'))
 
 @app.route('/hearings/<int:id>/delete', methods=['POST'])
 @login_required
 def hearings_delete(id):
-    r = Hearing.query.get_or_404(id); db.session.delete(r); db.session.commit(); flash('Hearing deleted')
-    return redirect(url_for('hearings'))
+    r = Hearing.query.get_or_404(id); db.session.delete(r)
+    db.session.commit(); flash('Hearing deleted'); return redirect(url_for('hearings'))
 
-# ---- Invoices ----
+# Invoices
 @app.route('/invoices')
 @login_required
 def invoices():
@@ -438,7 +424,8 @@ def invoices_create():
         case_id=int(request.form['case_id']),
         status_id=int(request.form['status_id']),
         amount=Decimal(request.form.get('amount') or 0),
-        due_date=datetime.strptime(request.form['due_date'], '%Y-%m-%d').date() if request.form.get('due_date') else None
+        due_date=datetime.strptime(request.form['due_date'], '%Y-%m-%d').date()
+                 if request.form.get('due_date') else None
     )
     db.session.add(r); db.session.commit(); flash('Invoice created')
     return redirect(url_for('invoices'))
@@ -460,22 +447,23 @@ def invoices_edit(id):
 @login_required
 def invoices_update(id):
     r = Invoice.query.get_or_404(id)
-    r.number=request.form['number']
-    r.client_id=int(request.form['client_id'])
-    r.case_id=int(request.form['case_id'])
-    r.status_id=int(request.form['status_id'])
-    r.amount=Decimal(request.form.get('amount') or 0)
-    r.due_date=datetime.strptime(request.form['due_date'], '%Y-%m-%d').date() if request.form.get('due_date') else None
+    r.number = request.form['number']
+    r.client_id = int(request.form['client_id'])
+    r.case_id = int(request.form['case_id'])
+    r.status_id = int(request.form['status_id'])
+    r.amount = Decimal(request.form.get('amount') or 0)
+    r.due_date = datetime.strptime(request.form['due_date'], '%Y-%m-%d').date() \
+                 if request.form.get('due_date') else None
     db.session.commit(); flash('Invoice updated')
     return redirect(url_for('invoices_edit', id=id))
 
 @app.route('/invoices/<int:id>/delete', methods=['POST'])
 @login_required
 def invoices_delete(id):
-    r = Invoice.query.get_or_404(id); db.session.delete(r); db.session.commit(); flash('Invoice deleted')
-    return redirect(url_for('invoices'))
+    r = Invoice.query.get_or_404(id); db.session.delete(r)
+    db.session.commit(); flash('Invoice deleted'); return redirect(url_for('invoices'))
 
-# ---- Print view
+# View/Print
 @app.get('/invoices/<int:id>')
 @login_required
 def invoice_view(id):
@@ -484,26 +472,25 @@ def invoice_view(id):
     paid, balance = _invoice_paid_balance(inv)
     return render_template('invoice_print.html', inv=inv, payments=pays, paid=paid, balance=balance)
 
-# ---- PDF download
+# PDF
 @app.get('/invoices/<int:id>/pdf')
 @login_required
 def invoice_pdf(id):
     inv = Invoice.query.get_or_404(id)
     pays = inv.payments.order_by(Payment.date.asc(), Payment.id.asc()).all()
     paid, balance = _invoice_paid_balance(inv)
-
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.pdfgen import canvas
     except Exception:
-        flash("PDF generator not available. Use Print → Save as PDF.", "error")
+        flash("PDF generator not available. Use browser Print → Save as PDF.", "error")
         return redirect(url_for('invoice_view', id=id))
 
     mem = io.BytesIO()
     c = canvas.Canvas(mem, pagesize=A4)
     w, h = A4
-
     y = h - 50
+
     c.setFont("Helvetica-Bold", 16); c.drawString(40, y, f"Invoice {inv.number}")
     c.setFont("Helvetica", 10); y -= 20
     c.drawString(40, y, f"Client: {inv.client.name}")
@@ -528,17 +515,17 @@ def invoice_pdf(id):
                 c.showPage(); y = h - 50; c.setFont("Helvetica", 10)
 
     c.showPage(); c.save(); mem.seek(0)
-    return send_file(mem, as_attachment=True, download_name=f"invoice-{inv.number}.pdf",
+    return send_file(mem, as_attachment=True,
+                     download_name=f"invoice-{inv.number}.pdf",
                      mimetype="application/pdf")
 
-# ---- Record payment
+# Payments
 @app.post('/invoices/<int:id>/payments/add')
 @login_required
 def invoice_payment_add(id):
     inv = Invoice.query.get_or_404(id)
-    amt_str = (request.form.get('amount') or '').strip()
     try:
-        amount = Decimal(amt_str)
+        amount = Decimal((request.form.get('amount') or '').strip())
     except Exception:
         flash('Invalid amount', 'error'); return redirect(url_for('invoices_edit', id=id))
     if amount <= 0:
@@ -550,20 +537,16 @@ def invoice_payment_add(id):
     except Exception:
         pay_date = date.today()
 
-    p = Payment(invoice_id=inv.id,
-                amount=amount,
-                date=pay_date,
+    p = Payment(invoice_id=inv.id, amount=amount, date=pay_date,
                 method=request.form.get('method'),
                 reference=request.form.get('reference'),
                 note=request.form.get('note'))
     db.session.add(p)
 
-    # Auto-close when fully paid
     paid, balance = _invoice_paid_balance(inv)
     if (Decimal(inv.amount or 0) - paid - amount) <= 0:
         closed = CaseStatus.query.filter_by(name='Closed').first()
-        if closed:
-            inv.status = closed
+        if closed: inv.status = closed
 
     db.session.commit()
     flash('Payment recorded', 'ok')
